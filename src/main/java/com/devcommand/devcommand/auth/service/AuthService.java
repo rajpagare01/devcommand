@@ -16,7 +16,11 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-
+/**
+ * Registration and login. This is the only feature-level business logic
+ * built in this stage - everything else (DSA, jobs, learning, projects,
+ * tasks) has entities/repositories only, per the scope restriction.
+ */
 @Service
 @RequiredArgsConstructor
 public class AuthService {

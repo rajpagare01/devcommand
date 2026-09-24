@@ -6,4 +6,3 @@ target/
 .env
 HELP.md
 .DS_Store
-src/main/resources

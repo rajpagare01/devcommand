@@ -1,0 +1,30 @@
+spring:
+  application:
+    name: devcommand
+
+  datasource:
+    url: jdbc:postgresql://localhost:5433/devcommand
+    username: postgres
+    password: rajpagare12
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+    open-in-view: false
+
+  devtools:
+    restart:
+      enabled: true
+
+server:
+  port: ${SERVER_PORT:8080}
+
+devcommand:
+  jwt:
+    secret: ${JWT_SECRET:change-this-in-production-to-a-long-random-base64-secret-value}
+    expiration-ms: ${JWT_EXPIRATION_MS:86400000}

@@ -27,7 +27,18 @@ com.devcommand.devcommand
 │                   mapper/DsaProblemMapper,
 │                   dto/CreateDsaProblemRequest, UpdateDsaProblemRequest, DsaProblemResponse
 │                   — full CRUD + filtering + pagination + sorting + ownership (see below)
-├── jobs/           entity/JobApplication, ApplicationStatus, InterviewRound + repositories + dto
+├── jobs/           entity/JobApplication, ApplicationStatus, InterviewRound, InterviewStatus
+│                   controller/JobApplicationController, InterviewRoundController,
+│                   service/JobApplicationService, InterviewRoundService,
+│                   repository/JobApplicationRepository + JobApplicationSpecifications,
+│                   InterviewRoundRepository,
+│                   mapper/JobApplicationMapper, InterviewRoundMapper,
+│                   dto/(job) CreateJobApplicationRequest, UpdateJobApplicationRequest,
+│                   JobStatusUpdateRequest, JobApplicationResponse,
+│                   dto/(interview) CreateInterviewRoundRequest, UpdateInterviewRoundRequest,
+│                   InterviewRoundResponse
+│                   — full CRUD + status change + nested interview rounds + filtering
+│                     + search + pagination + sorting + ownership (see below)
 ├── learning/       entity/LearningTopic, LearningStatus + repository + dto
 ├── projects/       entity/Project, ProjectStatus, ProjectTask, ProjectTaskStatus,
 │                   ProjectTaskPriority + repositories + dto
@@ -236,14 +247,20 @@ Full CRUD, ownership enforcement, filtering, pagination and sorting for
 
 Full CRUD, ownership enforcement, complete/start transitions, filtering,
 today/upcoming/completed convenience endpoints, pagination and sorting for
-`DailyTask`. See §12 below. Jobs/learning/projects remain entities-and-repos-only.
+`DailyTask`. See §12.
+
+## 10c. Job Application Tracker Module (implemented)
+
+Full CRUD + status transitions for `JobApplication`, plus nested CRUD for
+`InterviewRound`s, filtering, search, pagination and sorting. See §13.
+Learning/Projects remain entities-and-repos-only.
 
 ## 10. What is intentionally NOT implemented yet
 
-- Any CRUD endpoints/services/controllers for job applications, interview
-  rounds, learning topics, projects, or project tasks — entities/
-  repositories/DTOs exist, nothing else does. (DSA problems and daily
-  tasks *are* now fully implemented — see §10a/§10b.)
+- Any CRUD endpoints/services/controllers for learning topics, projects, or
+  project tasks — entities/repositories/DTOs exist, nothing else does.
+  (DSA problems, daily tasks, and job applications *are* now fully
+  implemented — see §10a/§10b/§10c.)
 - Analytics and dashboard logic.
 - WhatsApp integration (webhook, message parsing).
 - AI / natural-language command parsing.
@@ -626,18 +643,273 @@ Content-Type: application/json
 }
 ```
 
-### Build/test verification — important caveat (applies to both new modules)
+---
+
+## 13. Job Application Tracker Module
+
+### Entity correction made in this stage
+
+`InterviewRound.status` was a placeholder plain `String` in the foundation
+stage (explicitly flagged there as "revisited when interview-round
+features are implemented" — that's now). It's now a proper
+`InterviewStatus` enum (`SCHEDULED`, `COMPLETED`, `CANCELLED`,
+`RESCHEDULED`), `@Enumerated(EnumType.STRING)`, matching every other
+status-like field in the project. `roundType` stays a `String` — no enum
+was specified for it (free text like "Technical" or "HR-round"), so
+nothing was invented there. `ddl-auto=update` alters the existing column
+automatically in dev; no migration script was needed since there's no
+production data yet.
+
+### Endpoints
+
+**Job applications** (`/api/jobs`):
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| POST | `/api/jobs` | Yes | Create an application, owned by the caller |
+| GET | `/api/jobs` | Yes | Paginated list of the caller's applications, with optional filters/search |
+| GET | `/api/jobs/{id}` | Yes | One application — 404 if not owned |
+| PUT | `/api/jobs/{id}` | Yes | Full update — 404 if not owned; owner can never change |
+| DELETE | `/api/jobs/{id}` | Yes | Delete — 404 if not owned, 204 on success; cascades to its interview rounds |
+| PATCH | `/api/jobs/{id}/status` | Yes | `{"status": "INTERVIEW"}` — 404 if not owned |
+
+**Interview rounds**, nested under a specific job (`/api/jobs/{jobId}/interviews`):
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| POST | `/api/jobs/{jobId}/interviews` | Yes | Add a round to that job — 404 if the job isn't owned by the caller |
+| GET | `/api/jobs/{jobId}/interviews` | Yes | All rounds for that job — 404 if the job isn't owned |
+| GET | `/api/jobs/{jobId}/interviews/{roundId}` | Yes | One round — 404 if the job isn't owned, or the round doesn't belong to that job |
+| PUT | `/api/jobs/{jobId}/interviews/{roundId}` | Yes | Full update — same ownership rules |
+| DELETE | `/api/jobs/{jobId}/interviews/{roundId}` | Yes | Delete — same ownership rules, 204 on success |
+
+**Filtering** (`GET /api/jobs`, all optional, combinable): `company`,
+`role`, `source` (case-insensitive exact match), `status` (must be a valid
+enum value — invalid returns `400`).
+
+**Search** (`GET /api/jobs?search=java`): a separate, deliberately simple
+partial-match filter — `company ILIKE %term%` **OR** `role ILIKE %term%`.
+Combines with the filters above (a search always still adds `ownerIs`, and
+can be combined with `status=` etc.). Not a search engine — no ranking,
+no multi-field weighting, no tokenizing — just one `LIKE ... OR LIKE ...`
+clause, per "do not build an advanced search engine."
+
+**Pagination**: `?page=0&size=20` (defaults shown), same `Page<...>` shape
+as the DSA/Tasks modules.
+
+**Sorting**: `?sortBy=applicationDate&direction=desc` (defaults shown),
+whitelisted to `applicationDate`, `createdAt`, `company`, `status`.
+
+### DTOs
+
+- `CreateJobApplicationRequest` — `company`/`role` `@NotBlank`,
+  `applicationDate`/`status` `@NotNull`. No owner field.
+- `UpdateJobApplicationRequest` — same shape/validation (full-replace PUT,
+  same assumption used throughout). No owner field.
+- `JobStatusUpdateRequest` — just `{ status }`, `@NotNull`, for the
+  dedicated `PATCH .../status` endpoint.
+- `JobApplicationResponse` — never includes `User`/password; unchanged
+  shape from the foundation stage.
+- `CreateInterviewRoundRequest`/`UpdateInterviewRoundRequest` —
+  `roundNumber` `@NotNull @Positive`, `roundType` `@NotBlank`, `status`
+  `@NotNull`. **No `jobApplicationId` or `userId` field** — the parent job
+  comes from the URL path and its ownership is verified server-side before
+  the request is ever applied; there's no field here a client could even
+  attempt to misuse.
+- `InterviewRoundResponse` — no `createdAt`/`updatedAt` (the entity has
+  none, per the foundation-stage design and this stage's Javadoc note).
+
+### Repositories
+
+```java
+public interface JobApplicationRepository
+        extends JpaRepository<JobApplication, Long>, JpaSpecificationExecutor<JobApplication> {
+    Optional<JobApplication> findByIdAndUserId(Long id, Long userId);
+}
+
+public interface InterviewRoundRepository extends JpaRepository<InterviewRound, Long> {
+    List<InterviewRound> findByJobApplicationId(Long jobApplicationId);
+    Optional<InterviewRound> findByIdAndJobApplicationId(Long id, Long jobApplicationId);
+}
+```
+
+`JobApplicationSpecifications` holds one small builder per filter
+(`ownerIs`, `companyEquals`, `roleEquals`, `sourceEquals`, `statusEquals`,
+`searchKeyword`) — same pattern as the DSA/Tasks modules.
+
+`InterviewRoundRepository` deliberately has **no** user-scoped query
+method — see the ownership design below for why that's still fully safe.
+
+### Services
+
+- **`JobApplicationService`** — `create`, `getAll`, `getById`, `update`,
+  `delete`, `changeStatus`, plus **`getOwnedEntityOrThrow(jobId, userId)`**,
+  a public method that returns the managed `JobApplication` entity (not a
+  DTO) after the exact same ownership check used by every other
+  single-record method. This is the one method `InterviewRoundService`
+  depends on.
+- **`InterviewRoundService`** — `create`, `getAllForJob`, `getById`,
+  `update`, `delete`. Every single method calls
+  `jobApplicationService.getOwnedEntityOrThrow(jobId, userId)` **first**,
+  before touching `InterviewRoundRepository` at all.
+
+### Ownership & security design — two-layer check for nested resources
+
+This module introduces a nested-resource ownership pattern the DSA/Tasks
+modules didn't need, since `InterviewRound` has no direct `user`
+relationship of its own — only its parent `JobApplication` does:
+
+1. **Layer 1 — job ownership.** Every interview-round operation resolves
+   the parent job via `JobApplicationService.getOwnedEntityOrThrow(jobId,
+   userId)` — the identical `findByIdAndUserId` check `GET/PUT/DELETE
+   /api/jobs/{id}` uses. If the job isn't the caller's, this throws
+   `ResourceNotFoundException` immediately and `InterviewRoundRepository`
+   is never even queried.
+2. **Layer 2 — round-to-job scoping.** Once the job is confirmed owned,
+   every round lookup uses `findByIdAndJobApplicationId(roundId, jobId)` —
+   not `findById(roundId)` — so a round id that exists but belongs to a
+   *different* job (even one the same caller owns) also 404s, rather than
+   being returned by accident.
+
+Together, these two checks are what make "a round can never be reached
+through another user's job application" true, and they're exactly why
+`InterviewRoundRepository` doesn't need — and deliberately doesn't have —
+its own `userId`-aware query method. As with the DSA/Tasks modules,
+non-owner access returns **404, not 403**, so a response never confirms
+that a given job or round ID belongs to *someone* — just not the caller.
+
+### Validation rules
+
+| Field | Rule |
+|---|---|
+| `company`, `role` (job) | `@NotBlank` |
+| `applicationDate`, `status` (job) | `@NotNull` |
+| `roundNumber` (interview) | `@NotNull`, `@Positive` |
+| `roundType`, `status` (interview) | `@NotBlank` / `@NotNull` |
+| `location`, `jobUrl`, `source`, `salary`, `notes`, `feedback`, `scheduledAt` | optional, unvalidated |
+
+### Future WhatsApp / dashboard compatibility (design only — nothing built)
+
+Same approach as the Daily Tasks module: `JobApplicationService`'s methods
+take a plain `Long userId` plus DTOs, so a future WhatsApp command parser
+resolving `"applied at TCS for Java Developer"` to a `userId` and a
+`CreateJobApplicationRequest` could call `create(...)` directly — no
+service changes anticipated. No WhatsApp classes exist. Similarly, no
+analytics endpoints were added — the dashboard figures the spec lists
+(totals by status, upcoming interviews, offers, rejections) are all
+straightforward queries `JobApplicationRepository`/`InterviewRoundRepository`
+can already support later; nothing needed building now for that.
+
+### Tests added
+
+- `JobApplicationServiceTest` (16 Mockito unit tests): create,
+  get-by-id (owned/not-owned), update (owned/not-owned, confirms owner
+  untouched), delete (owned/not-owned, verifies `delete` never called for
+  a non-owner), `changeStatus` (owned/not-owned),
+  `getOwnedEntityOrThrow` (owned/not-owned — the method
+  `InterviewRoundService` depends on), `getAll` default/explicit
+  pagination and sort, invalid-status-filter → `400`.
+- `InterviewRoundServiceTest` (13 Mockito unit tests, with
+  `JobApplicationService` mocked rather than real — see the class Javadoc
+  for why): create/getAllForJob/getById/update/delete, each with both a
+  "job owned by caller" case and a "job not owned by caller → 404, and the
+  round repository is never touched" case, plus a dedicated
+  "round id doesn't belong to *this* job" 404 case for `getById`
+  (layer-2 scoping, distinct from layer-1 job ownership).
+- `JobApplicationControllerTest` (8 `@WebMvcTest` cases): create → 201,
+  blank-company → 400, missing-applicationDate → 400, get-all → 200 page
+  shape, get-by-id-not-found → 404, delete → 204, changeStatus → 200,
+  changeStatus-missing-status → 400.
+- `InterviewRoundControllerTest` (7 `@WebMvcTest` cases): create → 201,
+  blank-roundType → 400, non-positive-roundNumber → 400,
+  create-when-parent-job-not-owned → 404 (proves the controller correctly
+  propagates the service's ownership rejection), get-all → 200 list shape,
+  get-by-id-not-found → 404, delete → 204.
+
+The **mandatory ownership tests**: job-level —
+`getById_whenOwnedByAnotherUser_...`,
+`update_whenOwnedByAnotherUser_...`,
+`delete_whenOwnedByAnotherUser_...`,
+`changeStatus_whenOwnedByAnotherUser_...` in
+`JobApplicationServiceTest`; interview-level — all six
+`..._whenJobNotOwnedByCaller_...` tests in `InterviewRoundServiceTest`,
+plus the "Ownership Protection" folder added to the Postman collection
+(User B against User A's job *and* its interview rounds).
+
+### Postman
+
+The collection now has a **"6. Job Applications & Interviews"** folder
+with the same subfolder shape as the other two modules: **Create**
+(job + first interview round, incl. validation and no-token cases),
+**Read, Filter & Search** (every filter, `search=`, pagination, sorting,
+get-by-id, 404), **Status & Interview Management** (PATCH status, and
+full interview-round CRUD nested under the created job), **Delete**, and
+**Ownership Protection** (User B gets 404 on every one of User A's job
+*and* interview-round operations). Re-import both files to pick up the
+new folder/variables (`jobId`, `roundId`, etc.).
+
+Example requests:
+
+```http
+POST /api/jobs
+Authorization: Bearer <JWT>
+Content-Type: application/json
+
+{
+  "company": "TCS",
+  "role": "Java Developer",
+  "location": "Indore",
+  "jobUrl": "https://example.com/job",
+  "source": "LinkedIn",
+  "salary": "6-8 LPA",
+  "applicationDate": "2026-09-24",
+  "status": "APPLIED",
+  "notes": "Java + Spring Boot role"
+}
+```
+
+```http
+PATCH /api/jobs/{id}/status
+Authorization: Bearer <JWT>
+Content-Type: application/json
+
+{ "status": "INTERVIEW" }
+```
+
+```http
+POST /api/jobs/{jobId}/interviews
+Authorization: Bearer <JWT>
+Content-Type: application/json
+
+{
+  "roundNumber": 1,
+  "roundType": "Technical",
+  "scheduledAt": "2026-09-28T11:00:00",
+  "status": "SCHEDULED",
+  "feedback": null,
+  "notes": "Prepare Spring Security"
+}
+```
+
+Filtering/search example:
+```http
+GET /api/jobs?status=INTERVIEW&source=LinkedIn&search=java&page=0&size=20&sortBy=applicationDate&direction=desc
+Authorization: Bearer <JWT>
+```
+
+### Build/test verification — important caveat (applies to all three new modules: DSA, Daily Tasks, Jobs)
 
 I could not run `mvn compile`, `mvn test`, or start the application in this
 sandbox: there is no Maven installed here, the only JDK present is 21 (not
 23), and this environment's network allowlist does not include Maven
 Central, so dependencies can't even be fetched to attempt a build. I
 manually verified every new/changed file's package declaration against its
-directory, checked brace balance across the whole source tree, and traced
-through the Spring Data derived-query and `Specification` usage by hand for
-both the DSA and Daily Tasks modules — but none of that substitutes for an
-actual `mvn clean verify` on your machine (which does have Java 23, Maven,
-and Postgres). Please run that before relying on this, and let me know what
-it reports.
-#***REMOVED*** ***REMOVED***d***REMOVED***e***REMOVED***v***REMOVED***c***REMOVED***o***REMOVED***m***REMOVED***m***REMOVED***a***REMOVED***n***REMOVED***d***REMOVED******REMOVED***
-***REMOVED***
+directory, checked brace balance and class-name-vs-filename across the
+whole source tree (84 files, all clean), and traced through the Spring
+Data derived-query and `Specification` usage by hand for the DSA, Daily
+Tasks, and Jobs modules — including the two-layer ownership check
+(`JobApplicationService.getOwnedEntityOrThrow` → `InterviewRoundRepository`
+scoped queries) that the Jobs module's nested interview-round routes rely
+on — but none of that substitutes for an actual `mvn clean verify` on your
+machine (which does have Java 23, Maven, and Postgres). Please run that
+before relying on this, and let me know what it reports.
