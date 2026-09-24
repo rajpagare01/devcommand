@@ -168,7 +168,7 @@ class DailyTaskServiceTest {
         assertThatThrownBy(() -> service.delete(10L, OTHER_USER_ID))
                 .isInstanceOf(ResourceNotFoundException.class);
 
-        verify(dailyTaskRepository, never()).delete(any());
+        verify(dailyTaskRepository, never()).delete((DailyTask) any());
     }
 
     @Test
