@@ -39,7 +39,15 @@ com.devcommand.devcommand
 │                   InterviewRoundResponse
 │                   — full CRUD + status change + nested interview rounds + filtering
 │                     + search + pagination + sorting + ownership (see below)
-├── learning/       entity/LearningTopic, LearningStatus + repository + dto
+├── learning/       entity/LearningTopic, LearningStatus
+│                   controller/LearningTopicController, service/LearningTopicService,
+│                   repository/LearningTopicRepository + LearningTopicSpecifications,
+│                   mapper/LearningTopicMapper,
+│                   dto/CreateLearningTopicRequest, UpdateLearningTopicRequest,
+│                   ProgressUpdateRequest, LearningTopicResponse, LearningSummary
+│                   — full CRUD + progress auto-transitions + complete + filtering
+│                     + search + completed/in-progress + pagination + sorting
+│                     + ownership (see below)
 ├── projects/       entity/Project, ProjectStatus, ProjectTask, ProjectTaskStatus,
 │                   ProjectTaskPriority + repositories + dto
 ├── tasks/          entity/DailyTask, TaskCategory, TaskPriority, DailyTaskStatus
@@ -253,14 +261,19 @@ today/upcoming/completed convenience endpoints, pagination and sorting for
 
 Full CRUD + status transitions for `JobApplication`, plus nested CRUD for
 `InterviewRound`s, filtering, search, pagination and sorting. See §13.
-Learning/Projects remain entities-and-repos-only.
+
+## 10d. Learning Tracker Module (implemented)
+
+Full CRUD, progress auto-transitions, explicit completion, filtering,
+search, completed/in-progress views, pagination and sorting for
+`LearningTopic`. See §14. Projects remain entities-and-repos-only.
 
 ## 10. What is intentionally NOT implemented yet
 
-- Any CRUD endpoints/services/controllers for learning topics, projects, or
-  project tasks — entities/repositories/DTOs exist, nothing else does.
-  (DSA problems, daily tasks, and job applications *are* now fully
-  implemented — see §10a/§10b/§10c.)
+- Any CRUD endpoints/services/controllers for projects or project tasks —
+  entities/repositories/DTOs exist, nothing else does. (DSA problems,
+  daily tasks, job applications, and learning topics *are* now fully
+  implemented — see §10a/§10b/§10c/§10d.)
 - Analytics and dashboard logic.
 - WhatsApp integration (webhook, message parsing).
 - AI / natural-language command parsing.
@@ -897,7 +910,234 @@ GET /api/jobs?status=INTERVIEW&source=LinkedIn&search=java&page=0&size=20&sortBy
 Authorization: Bearer <JWT>
 ```
 
-### Build/test verification — important caveat (applies to all three new modules: DSA, Daily Tasks, Jobs)
+---
+
+## 14. Learning Tracker Module
+
+### Entity correction made in this stage
+
+`LearningStatus` gained a fourth value, **`ON_HOLD`** (existing values
+`NOT_STARTED`/`IN_PROGRESS`/`COMPLETED` untouched). The foundation-stage
+enum only had three values because no list was specified at the time; this
+module's own spec explicitly requires `ON_HOLD` for its progress
+auto-transition rules (see below), so there's now a concrete architectural
+reason to add it. Purely additive — no migration concern.
+
+### Endpoints
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| POST | `/api/learning` | Yes | Create a topic, owned by the caller |
+| GET | `/api/learning` | Yes | Paginated list of the caller's topics, with optional filters/search |
+| GET | `/api/learning/completed` | Yes | The caller's `COMPLETED` topics, most recently updated first |
+| GET | `/api/learning/in-progress` | Yes | The caller's `IN_PROGRESS` topics, highest progress first |
+| GET | `/api/learning/{id}` | Yes | One topic — 404 if not owned |
+| PUT | `/api/learning/{id}` | Yes | Full update — 404 if not owned; owner can never change |
+| DELETE | `/api/learning/{id}` | Yes | Delete — 404 if not owned, 204 on success |
+| PATCH | `/api/learning/{id}/progress` | Yes | `{"progress": 75}` — applies the auto-transition rules below |
+| PATCH | `/api/learning/{id}/complete` | Yes | Unconditionally sets `progress = 100`, `status = COMPLETED` |
+
+**Filtering** (`GET /api/learning`, all optional, combinable):
+`technology` (case-insensitive exact match), `status` (must be a valid
+enum value — invalid returns `400`), `progress` (exact integer match).
+
+**Search** (`GET /api/learning?search=security`): partial, case-insensitive
+match on `technology` **OR** `topic` — one `LIKE ... OR LIKE ...` clause,
+same "not a search engine" scope as the Jobs module's search.
+
+**Pagination**: `?page=0&size=20` (defaults shown), same `Page<...>` shape
+as the other three modules.
+
+**Sorting**: `?sortBy=progress&direction=desc` (defaults shown),
+whitelisted to `progress`, `hoursSpent`, `createdAt`, `technology`, `topic`.
+
+### Progress auto-transition rules (`PATCH /{id}/progress`)
+
+Applied in this priority order — implemented in
+`LearningTopicService.updateProgress`, with the full reasoning in its
+Javadoc:
+
+1. **`progress == 100` → `status = COMPLETED`, always.** Reaching 100% is
+   treated as an unambiguous "finished" signal, strong enough to end even
+   an `ON_HOLD` pause without a separate explicit action.
+2. **Otherwise, if `status` is currently `ON_HOLD`, it's left alone.**
+   This is the spec's "don't override an explicit `ON_HOLD` status"
+   protection — it exists specifically to stop rule 3 from silently
+   un-pausing a topic just because a progress number came in.
+3. **Otherwise, if `progress > 0` and `status == NOT_STARTED`, status
+   bumps to `IN_PROGRESS`.** Logging any real progress on an untouched
+   topic implies it's now underway.
+4. **Everything else is left as-is** (progress dropping back down,
+   already `IN_PROGRESS`/`COMPLETED`, etc.) — nothing in the spec calls
+   for any other automatic change.
+
+**`PATCH /{id}/complete` is the one exception to rule 2** — it's an
+explicit, dedicated action, so it's allowed to override `ON_HOLD` (the
+spec's "unless the endpoint is specifically intended to change it"
+carve-out). It always sets `progress = 100` and `status = COMPLETED`
+unconditionally.
+
+### DTOs
+
+- `CreateLearningTopicRequest` — `technology`/`topic` `@NotBlank`,
+  `progress` `@NotNull @Min(0) @Max(100)`, `status` `@NotNull`,
+  `hoursSpent` `@PositiveOrZero` (only enforced when present). No owner
+  field.
+- `UpdateLearningTopicRequest` — same shape/validation (full-replace PUT,
+  same assumption used throughout). No owner field.
+- `ProgressUpdateRequest` — just `{ progress }`, same `@Min(0) @Max(100)`
+  bounds, for the dedicated `PATCH .../progress` endpoint.
+- `LearningTopicResponse` — never includes `User`; unchanged shape from
+  the foundation stage.
+- `LearningSummary` — **not exposed by any endpoint** (see below).
+
+### Repository
+
+```java
+public interface LearningTopicRepository
+        extends JpaRepository<LearningTopic, Long>, JpaSpecificationExecutor<LearningTopic> {
+    Optional<LearningTopic> findByIdAndUserId(Long id, Long userId);
+}
+```
+
+`LearningTopicSpecifications` holds one small builder per filter
+(`ownerIs`, `technologyEquals`, `statusEquals`, `progressEquals`,
+`searchKeyword`) — same pattern as the other three modules.
+`LearningTopicService` always includes `ownerIs(userId)` first in every
+combination it builds.
+
+### Service — `LearningTopicService`
+
+`create`, `getAll`, `getById`, `update`, `delete`, `updateProgress`,
+`complete`, `completedTopics`, `inProgressTopics`, plus `getSummary`
+(below). Every method takes the caller's user id as an explicit
+parameter, same reasoning as the other three modules — including making a
+future WhatsApp command parser ("I completed Spring Security", "Spring
+Boot is 80 percent complete") a matter of resolving a phone number to a
+`userId` and calling `complete(...)`/`updateProgress(...)` directly.
+
+### Ownership & security design
+
+Identical approach to the other three modules: the owner comes from
+`@AuthenticationPrincipal UserPrincipal` in the controller, never the
+request body; `findByIdAndUserId` backs every single-record operation;
+non-owner access returns **404, not 403**. No `GlobalExceptionHandler`
+changes were needed.
+
+### Validation rules
+
+| Field | Rule |
+|---|---|
+| `technology`, `topic` | `@NotBlank` |
+| `progress` | `@NotNull`, `@Min(0)`, `@Max(100)` |
+| `status` | `@NotNull`, must be a valid enum value |
+| `hoursSpent` | `@PositiveOrZero` when provided (optional) |
+| `resourceUrl`, `notes` | optional, unvalidated |
+
+### Learning summary — a service method, not an endpoint
+
+The spec asked for a summary method *only if it stays architecturally
+clean, and explicitly said not to build `/api/analytics` yet*. A single
+`LearningTopicService.getSummary(userId)` fits that bar: it computes
+`totalTopics`/`completedTopics`/`inProgressTopics`/`totalHoursSpent`/
+`averageProgress` on the fly from the caller's own topics (already scoped
+by `ownerIs(userId)`, no pagination), with no new table and no persisted
+aggregate. **It has no controller and no route** — it exists purely so a
+future dashboard/analytics module can call it directly instead of
+re-deriving the same numbers. If it turns out to be the wrong shape once
+analytics is actually built, it's a private implementation detail with a
+single unit test (`getSummary_aggregatesAcrossTheCallersTopicsOnly`) and
+nothing depends on its API yet.
+
+### Frontend compatibility (no frontend changes made)
+
+`LearningTopicResponse` carries exactly the fields the spec listed the
+Lovable Learning page placeholder as needing — `technology`, `topic`,
+`progress`, `status`, `hoursSpent` (as `resourceUrl`, spelled to match),
+and `notes` — so the existing placeholder should be able to bind to this
+response shape directly once someone wires it up. No frontend files were
+touched, per the instruction.
+
+### Tests added
+
+- `LearningTopicServiceTest` (23 Mockito unit tests, no DB/Spring context
+  needed): create, get-by-id (owned/not-owned), update (owned/not-owned,
+  confirms owner untouched), delete (owned/not-owned, verifies `delete`
+  never called for a non-owner), **six dedicated tests for the progress
+  auto-transition rules** — reaching 100 always completes (including from
+  `ON_HOLD`), `NOT_STARTED` + positive progress bumps to `IN_PROGRESS`,
+  zero progress does *not* bump from `NOT_STARTED`, `ON_HOLD` is *not*
+  silently bumped by a non-100 update, already-`IN_PROGRESS` is left
+  alone, and not-owned → 404 — `complete` (unconditional override of
+  `ON_HOLD`, and not-owned → 404), `completedTopics`/`inProgressTopics`,
+  `getAll` default/explicit pagination and sort, invalid-status-filter →
+  `400`, and `getSummary`'s aggregation math.
+- `LearningTopicControllerTest` (13 `@WebMvcTest` cases): create → 201,
+  blank-technology → 400, progress-over-100 → 400, negative-progress →
+  400, negative-hoursSpent → 400, get-all → 200 page shape,
+  get-by-id-not-found → 404, delete → 204, updateProgress → 200 (and
+  out-of-range → 400), complete → 200 with `progress=100`/
+  `status=COMPLETED`, completed/in-progress → 200 with list shape.
+
+The **mandatory ownership tests** are
+`getById_whenOwnedByAnotherUser_...`,
+`update_whenOwnedByAnotherUser_...`,
+`delete_whenOwnedByAnotherUser_...`,
+`updateProgress_whenOwnedByAnotherUser_...`, and
+`complete_whenOwnedByAnotherUser_...` in `LearningTopicServiceTest`, plus
+the "Ownership Protection" folder added to the Postman collection.
+
+### Postman
+
+The collection now has a **"7. Learning Tracker"** folder with the same
+subfolder shape as the other three modules: **Create** (incl. validation
+and no-token cases), **Read, Filter & Search** (every filter, `search=`,
+pagination, sorting, get-by-id, completed, in-progress, 404), **Progress
+& Completion** (progress updates demonstrating each auto-transition rule
+— `NOT_STARTED`→`IN_PROGRESS`, reaching 100→`COMPLETED`, `ON_HOLD`
+protection — plus the explicit `/complete` override), **Delete**, and
+**Ownership Protection** (User B gets 404 on every one of User A's
+operations). Re-import both files to pick up the new folder/variables
+(`learningTopicId`, etc.).
+
+Example requests:
+
+```http
+POST /api/learning
+Authorization: Bearer <JWT>
+Content-Type: application/json
+
+{
+  "technology": "Java",
+  "topic": "Collections Framework",
+  "progress": 80,
+  "status": "IN_PROGRESS",
+  "hoursSpent": 12,
+  "resourceUrl": "https://example.com",
+  "notes": "Need more revision on HashMap internals"
+}
+```
+
+```http
+PATCH /api/learning/{id}/progress
+Authorization: Bearer <JWT>
+Content-Type: application/json
+
+{ "progress": 90 }
+```
+
+```http
+PATCH /api/learning/{id}/complete
+Authorization: Bearer <JWT>
+```
+
+Filtering/search example:
+```http
+GET /api/learning?technology=Spring%20Boot&status=IN_PROGRESS&search=security&page=0&size=20&sortBy=progress&direction=desc
+Authorization: Bearer <JWT>
+```
+
+### Build/test verification — important caveat (applies to all four modules built so far: DSA, Daily Tasks, Jobs, Learning)
 
 I could not run `mvn compile`, `mvn test`, or start the application in this
 sandbox: there is no Maven installed here, the only JDK present is 21 (not
@@ -905,11 +1145,14 @@ sandbox: there is no Maven installed here, the only JDK present is 21 (not
 Central, so dependencies can't even be fetched to attempt a build. I
 manually verified every new/changed file's package declaration against its
 directory, checked brace balance and class-name-vs-filename across the
-whole source tree (84 files, all clean), and traced through the Spring
+whole source tree (93 files, all clean), and traced through the Spring
 Data derived-query and `Specification` usage by hand for the DSA, Daily
-Tasks, and Jobs modules — including the two-layer ownership check
+Tasks, Jobs, and Learning modules — including the two-layer ownership check
 (`JobApplicationService.getOwnedEntityOrThrow` → `InterviewRoundRepository`
 scoped queries) that the Jobs module's nested interview-round routes rely
-on — but none of that substitutes for an actual `mvn clean verify` on your
-machine (which does have Java 23, Maven, and Postgres). Please run that
-before relying on this, and let me know what it reports.
+on, and the progress auto-transition priority order
+(100% → ON_HOLD-guard → NOT_STARTED-bump) in
+`LearningTopicService.updateProgress` — but none of that substitutes for an
+actual `mvn clean verify` on your machine (which does have Java 23, Maven,
+and Postgres). Please run that before relying on this, and let me know what
+it reports.
