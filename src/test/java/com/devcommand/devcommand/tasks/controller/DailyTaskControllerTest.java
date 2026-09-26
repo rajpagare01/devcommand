@@ -57,6 +57,12 @@ class DailyTaskControllerTest {
     @Autowired
     private MockMvc mockMvc;
 
+    @MockBean
+    private com.devcommand.devcommand.security.JwtService jwtService;
+
+    @MockBean
+    private org.springframework.security.core.userdetails.UserDetailsService userDetailsService;
+
     @Autowired
     private ObjectMapper objectMapper;
 
@@ -214,3 +220,4 @@ class DailyTaskControllerTest {
                 .andExpect(jsonPath("$[0].id").value(10));
     }
 }
+

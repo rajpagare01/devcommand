@@ -157,7 +157,7 @@ class JobApplicationServiceTest {
         assertThatThrownBy(() -> service.delete(10L, OTHER_USER_ID))
                 .isInstanceOf(ResourceNotFoundException.class);
 
-        verify(jobApplicationRepository, never()).delete(any());
+        verify(jobApplicationRepository, never()).delete(any(JobApplication.class));
     }
 
     @Test

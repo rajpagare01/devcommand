@@ -166,7 +166,7 @@ class DsaProblemServiceTest {
         assertThatThrownBy(() -> service.delete(10L, OTHER_USER_ID))
                 .isInstanceOf(ResourceNotFoundException.class);
 
-        verify(dsaProblemRepository, never()).delete(any());
+        verify(dsaProblemRepository, never()).delete(any(DsaProblem.class));
     }
 
     @Test
