@@ -20,4 +20,10 @@ public interface InterviewRoundRepository extends JpaRepository<InterviewRound, 
     List<InterviewRound> findByJobApplicationId(Long jobApplicationId);
 
     Optional<InterviewRound> findByIdAndJobApplicationId(Long id, Long jobApplicationId);
+    
+    @org.springframework.data.jpa.repository.Query("SELECT COUNT(i) FROM InterviewRound i WHERE i.jobApplication.user.id = :userId")
+    long countByJobApplicationUserId(@org.springframework.data.repository.query.Param("userId") Long userId);
+    
+    @org.springframework.data.jpa.repository.Query("SELECT COUNT(i) FROM InterviewRound i WHERE i.jobApplication.user.id = :userId AND i.status = :status")
+    long countByJobApplicationUserIdAndStatus(@org.springframework.data.repository.query.Param("userId") Long userId, @org.springframework.data.repository.query.Param("status") com.devcommand.devcommand.jobs.entity.InterviewStatus status);
 }

@@ -3,28 +3,57 @@ spring:
     name: devcommand
 
   datasource:
-    url: jdbc:postgresql://localhost:5433/devcommand
-    username: postgres
-    password: rajpagare12
+    url: ${DATABASE_URL}
+    username: ${DATABASE_USERNAME}
+    password: ${DATABASE_PASSWORD}
     driver-class-name: org.postgresql.Driver
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 1
 
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     show-sql: false
     properties:
       hibernate:
         format_sql: true
     open-in-view: false
 
+server:
+  port: ${SERVER_PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: when_authorized
+
+devcommand:
+  jwt:
+    secret: ${JWT_SECRET}
+    expiration-ms: ${JWT_EXPIRATION_MS:86400000}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:8081}
+
+---
+spring:
+  config:
+    activate:
+      on-profile: "dev"
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5433/devcommand}
+    username: ${DATABASE_USERNAME:postgres}
+    password: ${DATABASE_PASSWORD:rajpagare12}
   devtools:
     restart:
       enabled: true
 
-server:
-  port: ${SERVER_PORT:8080}
-
 devcommand:
   jwt:
     secret: ${JWT_SECRET:change-this-in-production-to-a-long-random-base64-secret-value}
-    expiration-ms: ${JWT_EXPIRATION_MS:86400000}
