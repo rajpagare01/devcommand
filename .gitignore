@@ -14,3 +14,4 @@ HELP.md
 test/
 DevCommand_Local.postman_environment.json
 devcommandpostman.json
+token.txt
