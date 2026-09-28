@@ -12,6 +12,5 @@ target/
 HELP.md
 .DS_Store
 test/
-src/main/resources/
 DevCommand_Local.postman_environment.json
 devcommandpostman.json

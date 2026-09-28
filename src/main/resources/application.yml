@@ -47,9 +47,9 @@ spring:
     activate:
       on-profile: "dev"
   datasource:
-    url: ${DATABASE_URL:jdbc:postgresql://localhost:5433/devcommand}
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/devcommand}
     username: ${DATABASE_USERNAME:postgres}
-    password: ${DATABASE_PASSWORD:rajpagare12}
+    password: ${DATABASE_PASSWORD:postgres_password_example}
   devtools:
     restart:
       enabled: true
