@@ -57,3 +57,13 @@ spring:
 devcommand:
   jwt:
     secret: ${JWT_SECRET:change-this-in-production-to-a-long-random-base64-secret-value}
+
+twilio:
+  account-sid: ${TWILIO_ACCOUNT_SID:}
+  auth-token: ${TWILIO_AUTH_TOKEN:}
+  whatsapp-number: ${TWILIO_WHATSAPP_NUMBER:}
+  content-sid: ${TWILIO_CONTENT_SID:}
+
+telegram:
+  bot-token: ${TELEGRAM_BOT_TOKEN:}
+  allowed-user-id: ${TELEGRAM_ALLOWED_USER_ID:}

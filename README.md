@@ -143,7 +143,9 @@ See `.env.example`. Summary:
 | `JWT_EXPIRATION_MS` | Token lifetime in ms | `86400000` (24h) |
 | `CORS_ALLOWED_ORIGINS` | Allowed CORS domains | `http://localhost:8081` |
 | `SERVER_PORT` | HTTP backend port | `8080` |
-
+| `TELEGRAM_BOT_TOKEN` | Token obtained from BotFather | None |
+| `TELEGRAM_ALLOWED_USER_ID` | Your numeric Telegram user ID | None |
+> **Telegram Note:** Automatic verification of Telegram identities is disabled in production for security. Do NOT insert identities directly via SQL in production. When starting DevCommand for the first time with a fresh database, a one-time administrative bootstrap token will be generated and printed to the server logs. Message your Telegram bot with `/bootstrap <token>` to securely create the system admin account and link your Telegram identity. Run only ONE backend instance with polling enabled for the same bot token.
 > [!IMPORTANT]
 > The production configuration (`prod` profile) strictly requires these environment variables. Fallbacks only exist for local Maven test runs via the `dev` profile. Ensure your `.env` file is correctly populated before spinning up the Docker Compose stack.
 

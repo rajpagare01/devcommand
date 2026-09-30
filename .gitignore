@@ -3,7 +3,8 @@ target/
 .idea/
 *.iml
 .vscode/
-
+test/
+src/main/resources/*
 # Environment variables
 .env
 .env.*
@@ -15,3 +16,5 @@ test/
 DevCommand_Local.postman_environment.json
 devcommandpostman.json
 token.txt
+tc-debug.log
+test-output.txt

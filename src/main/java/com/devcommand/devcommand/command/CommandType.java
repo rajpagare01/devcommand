@@ -1,0 +1,15 @@
+package com.devcommand.devcommand.command;
+
+public enum CommandType {
+    CREATE_TASK,
+    COMPLETE_TASK,
+    CREATE_DSA_PROBLEM,
+    UPDATE_LEARNING_PROGRESS,
+    CREATE_JOB_APPLICATION,
+
+    READ_TASKS_TODAY,
+    READ_PENDING_TASKS,
+    READ_DSA_STATS,
+    READ_JOB_PIPELINE,
+    READ_LEARNING_PROGRESS
+}

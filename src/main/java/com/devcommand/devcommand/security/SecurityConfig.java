@@ -39,7 +39,8 @@ public class SecurityConfig {
     private static final String[] PUBLIC_ENDPOINTS = {
             "/api/auth/register",
             "/api/auth/login",
-            "/actuator/health"
+            "/actuator/health",
+            "/api/integrations/whatsapp/webhook"
     };
 
     @Bean
