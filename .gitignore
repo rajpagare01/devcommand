@@ -3,7 +3,7 @@ target/
 .idea/
 *.iml
 .vscode/
-test/
+/test/
 src/main/resources/*
 # Environment variables
 .env
@@ -12,7 +12,7 @@ src/main/resources/*
 
 HELP.md
 .DS_Store
-test/
+/test/
 DevCommand_Local.postman_environment.json
 devcommandpostman.json
 token.txt
