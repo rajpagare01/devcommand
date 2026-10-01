@@ -3,16 +3,21 @@ package com.devcommand.devcommand.integrations.telegram.service;
 import com.devcommand.devcommand.command.identity.ExternalIdentityProvider;
 import com.devcommand.devcommand.integrations.identity.entity.UserExternalIdentity;
 import com.devcommand.devcommand.integrations.identity.repository.ExternalIdentityRepository;
+import com.devcommand.devcommand.integrations.telegram.entity.TelegramBootstrapToken;
+import com.devcommand.devcommand.integrations.telegram.repository.TelegramBootstrapTokenRepository;
 import com.devcommand.devcommand.user.entity.User;
 import com.devcommand.devcommand.user.repository.UserRepository;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.OffsetDateTime;
+import java.util.Base64;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -22,59 +27,77 @@ public class TelegramBootstrapService {
 
     private final ExternalIdentityRepository identityRepository;
     private final UserRepository userRepository;
-    private final PasswordEncoder passwordEncoder;
-
-    private String currentBootstrapToken;
-    private OffsetDateTime tokenExpiry;
+    private final TelegramBootstrapTokenRepository tokenRepository;
 
     public TelegramBootstrapService(ExternalIdentityRepository identityRepository,
                                     UserRepository userRepository,
-                                    PasswordEncoder passwordEncoder) {
+                                    TelegramBootstrapTokenRepository tokenRepository) {
         this.identityRepository = identityRepository;
         this.userRepository = userRepository;
-        this.passwordEncoder = passwordEncoder;
-    }
-
-    @PostConstruct
-    public void init() {
-        if (identityRepository.count() == 0) {
-            currentBootstrapToken = UUID.randomUUID().toString();
-            tokenExpiry = OffsetDateTime.now().plusHours(1);
-            log.info("=======================================================================");
-            log.info("TELEGRAM ADMIN BOOTSTRAP TOKEN GENERATED");
-            log.info("Send the following message to your Telegram bot to link your account:");
-            log.info("/bootstrap {}", currentBootstrapToken);
-            log.info("This token will expire in 1 hour.");
-            log.info("=======================================================================");
-        }
+        this.tokenRepository = tokenRepository;
     }
 
     @Transactional
-    public boolean bootstrapAdmin(String token, String telegramId) {
-        if (currentBootstrapToken == null || !currentBootstrapToken.equals(token)) {
-            return false;
-        }
-        if (OffsetDateTime.now().isAfter(tokenExpiry)) {
-            currentBootstrapToken = null;
-            return false;
+    public String generateTokenForUser(Long userId) {
+        if (!userRepository.existsById(userId)) {
+            throw new IllegalArgumentException("User does not exist");
         }
 
-        // Token matches and is not expired.
-        // Create an admin user if there are no users, or link to the first user.
-        User adminUser = userRepository.findAll().stream().findFirst().orElseGet(() -> {
-            User newUser = User.builder()
-                    .name("System Admin")
-                    .email("admin@localhost")
-                    .password(passwordEncoder.encode(UUID.randomUUID().toString()))
-                    .build();
-            return userRepository.save(newUser);
-        });
+        // Generate a cryptographically secure token
+        String plaintextToken = UUID.randomUUID().toString().replace("-", "");
+        String tokenHash = hashToken(plaintextToken);
 
-        UserExternalIdentity identity = new UserExternalIdentity(adminUser, ExternalIdentityProvider.TELEGRAM, telegramId, true);
+        OffsetDateTime expiresAt = OffsetDateTime.now().plusMinutes(5);
+
+        TelegramBootstrapToken tokenEntity = new TelegramBootstrapToken(tokenHash, userId, expiresAt);
+        tokenRepository.save(tokenEntity);
+
+        return plaintextToken;
+    }
+
+    @Transactional
+    public String linkAccount(String token, String telegramId) {
+        String tokenHash = hashToken(token);
+        
+        Optional<TelegramBootstrapToken> tokenOpt = tokenRepository.findById(tokenHash);
+        if (tokenOpt.isEmpty()) {
+            return "Invalid or expired token.";
+        }
+
+        int deleted = tokenRepository.deleteByTokenHash(tokenHash); // Consume atomically
+        if (deleted == 0) {
+            return "Invalid or expired token."; // Another thread consumed it first
+        }
+
+        TelegramBootstrapToken tokenEntity = tokenOpt.get();
+
+        if (OffsetDateTime.now().isAfter(tokenEntity.getExpiresAt())) {
+            return "Token has expired.";
+        }
+
+        if (identityRepository.existsByProviderAndExternalId(ExternalIdentityProvider.TELEGRAM, telegramId)) {
+            return "This Telegram account is already linked to a user.";
+        }
+        
+        User user = userRepository.findById(tokenEntity.getUserId()).orElse(null);
+        if (user == null) {
+            return "Associated user no longer exists.";
+        }
+
+        UserExternalIdentity identity = new UserExternalIdentity(user, ExternalIdentityProvider.TELEGRAM, telegramId, true);
         identityRepository.save(identity);
 
-        currentBootstrapToken = null; // consume token
-        log.info("Admin bootstrap successful for Telegram ID: {}", telegramId);
-        return true;
+        log.info("Telegram ID {} successfully linked to user ID {}", telegramId, user.getId());
+        return "Account successfully linked! You can now use DevCommand.";
+    }
+
+    private String hashToken(String token) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(token.getBytes(StandardCharsets.UTF_8));
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(hash);
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException("SHA-256 algorithm not found", e);
+        }
     }
 }

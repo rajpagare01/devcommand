@@ -46,4 +46,8 @@ public final class DailyTaskSpecifications {
     public static Specification<DailyTask> dueDateAfter(LocalDate date) {
         return (root, query, cb) -> cb.greaterThan(root.get("dueDate"), date);
     }
+
+    public static Specification<DailyTask> titleContainsIgnoreCase(String keyword) {
+        return (root, query, cb) -> cb.like(cb.lower(root.get("title")), "%" + keyword.toLowerCase() + "%");
+    }
 }

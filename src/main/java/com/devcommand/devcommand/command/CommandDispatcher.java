@@ -26,11 +26,15 @@ public class CommandDispatcher {
             throw new CommandException("Command cannot be null");
         }
 
-        CommandHandler handler = handlers.stream()
-                .filter(h -> h.supports(command.type()))
-                .findFirst()
-                .orElseThrow(() -> new CommandException("Unsupported command: " + command.type()));
+        try {
+            CommandHandler handler = handlers.stream()
+                    .filter(h -> h.supports(command.type()))
+                    .findFirst()
+                    .orElseThrow(() -> new CommandException("Unsupported command: " + command.type()));
 
-        return handler.handle(command);
+            return handler.handle(command);
+        } catch (CommandException e) {
+            return CommandResult.failure(e.getMessage());
+        }
     }
 }

@@ -53,6 +53,22 @@ public class CommandParameters {
             throw new CommandException("Invalid parameter: " + key);
         }
     }
+
+    public Optional<Integer> optionalInteger(String key) {
+        Object val = params.get(key);
+        if (val == null) {
+            return Optional.empty();
+        }
+        if (val instanceof Integer) {
+            return Optional.of((Integer) val);
+        }
+        try {
+            return Optional.of(Integer.parseInt(String.valueOf(val).trim()));
+        } catch (NumberFormatException e) {
+            throw new CommandException("Invalid parameter: " + key + " must be an integer");
+        }
+    }
+
     
     // Safety check to ensure handlers don't accidentally extract a userId override
     public void rejectKey(String key) {

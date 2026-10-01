@@ -40,13 +40,14 @@ class CommandDispatcherTest {
     }
 
     @Test
-    void dispatch_UnsupportedCommand_ThrowsException() {
+    void dispatch_UnsupportedCommand_ReturnsFailure() {
         when(mockHandler.supports(CommandType.COMPLETE_TASK)).thenReturn(false);
 
         Command command = new Command(CommandType.COMPLETE_TASK, 1L, Map.of());
         
-        CommandException ex = assertThrows(CommandException.class, () -> dispatcher.dispatch(command));
-        assertTrue(ex.getMessage().contains("Unsupported command"));
+        CommandResult result = dispatcher.dispatch(command);
+        assertFalse(result.success());
+        assertTrue(result.message().contains("Unsupported command"));
         verify(mockHandler, never()).handle(any(Command.class));
     }
 

@@ -10,6 +10,7 @@ import com.devcommand.devcommand.integrations.telegram.config.TelegramProperties
 import com.devcommand.devcommand.integrations.telegram.entity.TelegramProcessedUpdate;
 import com.devcommand.devcommand.integrations.telegram.repository.TelegramProcessedUpdateRepository;
 import com.devcommand.devcommand.integrations.whatsapp.service.DeterministicCommandParser;
+import com.devcommand.devcommand.integrations.gemini.service.NaturalLanguageInterpreter;
 import com.devcommand.devcommand.user.entity.User;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -44,6 +45,7 @@ public class TelegramBotService {
     private final TelegramProcessedUpdateRepository processedUpdateRepository;
     private final ObjectMapper objectMapper;
     private final TelegramBootstrapService bootstrapService;
+    private final NaturalLanguageInterpreter interpreter;
 
     private final HttpClient httpClient;
     private final AtomicBoolean running = new AtomicBoolean(false);
@@ -57,7 +59,8 @@ public class TelegramBotService {
                               TelegramProcessedUpdateRepository processedUpdateRepository,
                               ObjectMapper objectMapper,
                               HttpClient httpClient,
-                              TelegramBootstrapService bootstrapService) {
+                              TelegramBootstrapService bootstrapService,
+                              NaturalLanguageInterpreter interpreter) {
         this.properties = properties;
         this.updateProcessor = updateProcessor;
         this.parser = parser;
@@ -66,6 +69,7 @@ public class TelegramBotService {
         this.objectMapper = objectMapper;
         this.httpClient = httpClient;
         this.bootstrapService = bootstrapService;
+        this.interpreter = interpreter;
     }
 
     @PostConstruct
@@ -177,21 +181,17 @@ public class TelegramBotService {
         long chatId = chat.path("id").asLong();
         String text = textNode.asText();
 
-        if (properties.getAllowedUserId() != senderId) {
-            log.warn("Unauthorized Telegram access attempt from sender ID: {}", senderId);
-            sendMessage(chatId, "Unauthorized user.");
+        if (text.startsWith("/bootstrap ")) {
+            String token = text.substring("/bootstrap ".length()).trim();
+            String bootstrapResult = bootstrapService.linkAccount(token, String.valueOf(senderId));
+            sendMessage(chatId, bootstrapResult);
             updateProcessor.markProcessed(updateId);
             return true;
         }
 
-        if (text.startsWith("/bootstrap ")) {
-            String token = text.substring("/bootstrap ".length()).trim();
-            boolean success = bootstrapService.bootstrapAdmin(token, String.valueOf(senderId));
-            if (success) {
-                sendMessage(chatId, "Bootstrap successful. Your Telegram account is now linked to the admin user. You can now use /start.");
-            } else {
-                sendMessage(chatId, "Invalid or expired bootstrap token.");
-            }
+        if (properties.getAllowedUserId() != null && properties.getAllowedUserId() != senderId) {
+            log.warn("Unauthorized Telegram access attempt from sender ID: {}", senderId);
+            sendMessage(chatId, "Unauthorized user.");
             updateProcessor.markProcessed(updateId);
             return true;
         }
@@ -215,28 +215,86 @@ public class TelegramBotService {
         User user = userOpt.get();
 
         if (text.startsWith("/start") || text.startsWith("/help")) {
-            sendMessage(chatId, "Welcome to DevCommand Telegram Bot.\nYou can add tasks by typing: add task: <title>");
+            sendMessage(chatId, "Welcome to DevCommand Telegram Bot.\nYou can add tasks by typing: add task: <title>\nOr just type your request naturally!");
             updateProcessor.markProcessed(updateId);
             return true;
         }
 
-        Optional<Command> commandOpt = parser.parse(user.getId(), text);
-        if (commandOpt.isEmpty()) {
+        Command finalCommand = null;
+        if (text.startsWith("/confirm ")) {
+            String token = text.substring("/confirm ".length()).trim();
+            finalCommand = new Command(com.devcommand.devcommand.command.CommandType.CONFIRM_ACTION, user.getId(), new com.devcommand.devcommand.command.CommandParameters(java.util.Map.of("token", token, "chatId", chatId)));
+        } else if (text.startsWith("/cancel ")) {
+            String token = text.substring("/cancel ".length()).trim();
+            finalCommand = new Command(com.devcommand.devcommand.command.CommandType.CANCEL_ACTION, user.getId(), new com.devcommand.devcommand.command.CommandParameters(java.util.Map.of("token", token, "chatId", chatId)));
+        } else {
+            Optional<Command> commandOpt = parser.parse(user.getId(), text);
+            
+            if (commandOpt.isPresent()) {
+                finalCommand = commandOpt.get();
+            } else {
+                // Fallback to Gemini
+                try {
+                    com.devcommand.devcommand.integrations.gemini.service.InterpretationResult result = interpreter.interpret(user.getId(), text);
+                    switch (result.status()) {
+                        case READY:
+                            finalCommand = result.command();
+                            break;
+                        case CLARIFICATION_REQUIRED:
+                            sendMessage(chatId, result.message());
+                            updateProcessor.markProcessed(updateId);
+                            return true;
+                        case UNSUPPORTED:
+                            sendMessage(chatId, "Sorry, I can't help with that yet. Try asking about tasks!");
+                            updateProcessor.markProcessed(updateId);
+                            return true;
+                        case INVALID_MODEL_RESPONSE:
+                            sendMessage(chatId, "I'm having trouble understanding that. Could you rephrase?");
+                            updateProcessor.markProcessed(updateId);
+                            return true;
+                    }
+                } catch (com.devcommand.devcommand.integrations.gemini.service.GeminiApiException e) {
+                    log.error("Gemini API infrastructure failure", e);
+                    sendMessage(chatId, "My AI assistant is temporarily unavailable. Please use the exact command format (e.g., 'add task: title').");
+                    // Do not mark as processed if we want to retry? Actually, this is a user-facing action, we probably want to mark it 
+                    // so they can try again, rather than repeatedly erroring on the same message and blocking the queue.
+                    updateProcessor.markProcessed(updateId);
+                    return true;
+                } catch (Exception e) {
+                    log.error("Unexpected error during NLP interpretation", e);
+                    sendMessage(chatId, "An error occurred while processing your request naturally.");
+                    updateProcessor.markProcessed(updateId);
+                    return true;
+                }
+            }
+        }
+
+        if (finalCommand == null) {
             sendMessage(chatId, "Unsupported command. Type /help for instructions.");
             updateProcessor.markProcessed(updateId);
             return true;
         }
 
+        // Inject chatId into every command parameters
+        java.util.Map<String, Object> newParams = new java.util.HashMap<>(finalCommand.parameters().asMap());
+        newParams.put("chatId", chatId);
+        finalCommand = new Command(finalCommand.type(), finalCommand.userId(), new com.devcommand.devcommand.command.CommandParameters(newParams));
+
+
         try {
-            CommandResult result = updateProcessor.processAndMark(commandOpt.get(), updateId);
+            CommandResult result = updateProcessor.processAndMark(finalCommand, updateId);
             if (result.success()) {
-                sendMessage(chatId, "Command executed successfully: " + result.message());
+                sendMessage(chatId, "✅ " + result.message());
             } else {
-                sendMessage(chatId, "Command failed: " + result.message());
+                sendMessage(chatId, "❌ " + result.message());
             }
             return true;
+        } catch (org.springframework.dao.TransientDataAccessException | org.springframework.transaction.TransactionException transientE) {
+            log.error("Transient error during command execution, will retry", transientE);
+            // Do not mark as processed so it can be retried on next poll.
+            return false;
         } catch (Exception e) {
-            log.error("Command execution failed", e);
+            log.error("Command execution failed permanently", e);
             sendMessage(chatId, "Command execution failed due to an internal error.");
             try {
                 updateProcessor.markProcessed(updateId);
@@ -251,9 +309,11 @@ public class TelegramBotService {
     private void sendMessage(long chatId, String text) {
         try {
             String url = API_URL + properties.getBotToken() + "/sendMessage";
-            // Escape JSON quotes
-            String safeText = text.replace("\"", "\\\"").replace("\n", "\\n");
-            String payload = "{\"chat_id\":" + chatId + ",\"text\":\"" + safeText + "\"}";
+            
+            java.util.Map<String, Object> payloadMap = new java.util.HashMap<>();
+            payloadMap.put("chat_id", chatId);
+            payloadMap.put("text", text);
+            String payload = objectMapper.writeValueAsString(payloadMap);
             
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
@@ -261,9 +321,19 @@ public class TelegramBotService {
                     .POST(HttpRequest.BodyPublishers.ofString(payload))
                     .build();
                     
-            httpClient.send(request, HttpResponse.BodyHandlers.discarding());
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 200) {
+                String errorDescription = "Unknown error";
+                try {
+                    JsonNode root = objectMapper.readTree(response.body());
+                    if (root.has("description")) {
+                        errorDescription = root.get("description").asText();
+                    }
+                } catch (Exception ignored) {}
+                log.error("Failed to send Telegram message. HTTP {}: {}", response.statusCode(), errorDescription);
+            }
         } catch (Exception e) {
-            log.error("Failed to send Telegram message", e);
+            log.error("Exception while sending Telegram message", e);
         }
     }
 }

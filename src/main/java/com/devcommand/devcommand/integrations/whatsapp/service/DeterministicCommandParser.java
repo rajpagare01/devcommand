@@ -37,6 +37,14 @@ public class DeterministicCommandParser {
             return Optional.of(command);
         }
 
+        if (body.equalsIgnoreCase("list tasks")) {
+            return Optional.of(new Command(
+                    CommandType.READ_PENDING_TASKS,
+                    userId,
+                    new CommandParameters(new HashMap<>())
+            ));
+        }
+
         return Optional.empty();
     }
 }

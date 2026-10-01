@@ -139,6 +139,15 @@ public class DailyTaskService {
                 .stream().map(mapper::toResponse).toList();
     }
 
+    /** All incomplete (pending) tasks, returning a paginated list. */
+    public Page<DailyTaskResponse> getPending(Long userId, Pageable pageable) {
+        Specification<DailyTask> spec = Specification.allOf(
+                DailyTaskSpecifications.ownerIs(userId),
+                DailyTaskSpecifications.statusNot(DailyTaskStatus.COMPLETED)
+        );
+        return dailyTaskRepository.findAll(spec, pageable).map(mapper::toResponse);
+    }
+
     /** Completed tasks, most recently completed first. */
     public List<DailyTaskResponse> completed(Long userId) {
         Specification<DailyTask> spec = Specification.allOf(
@@ -150,6 +159,15 @@ public class DailyTaskService {
     }
 
     // ---- helpers ---------------------------------------------------------
+
+    public List<DailyTaskResponse> searchPendingTasks(Long userId, String keyword) {
+        Specification<DailyTask> spec = Specification.allOf(
+                DailyTaskSpecifications.ownerIs(userId),
+                DailyTaskSpecifications.statusNot(DailyTaskStatus.COMPLETED),
+                DailyTaskSpecifications.titleContainsIgnoreCase(keyword)
+        );
+        return dailyTaskRepository.findAll(spec).stream().map(mapper::toResponse).toList();
+    }
 
     /** Ownership-safe single-record lookup used by every by-id operation. */
     private DailyTask findOwned(Long id, Long userId) {
