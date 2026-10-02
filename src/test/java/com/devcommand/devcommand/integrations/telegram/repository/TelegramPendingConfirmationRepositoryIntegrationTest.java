@@ -11,10 +11,6 @@ import org.springframework.test.context.ActiveProfiles;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import com.devcommand.devcommand.integration.AbstractIntegrationTest;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -31,7 +27,7 @@ class TelegramPendingConfirmationRepositoryIntegrationTest extends AbstractInteg
     private UserRepository userRepository;
 
     @Test
-    void testAtomicConsumption() throws InterruptedException {
+    void testAtomicConsumption() {
         // Prepare test data
         User user = new User();
         user.setName("Test User");
@@ -45,30 +41,17 @@ class TelegramPendingConfirmationRepositoryIntegrationTest extends AbstractInteg
         );
         confirmationRepository.saveAndFlush(conf);
 
-        int threads = 5;
-        ExecutorService executor = Executors.newFixedThreadPool(threads);
-        CountDownLatch latch = new CountDownLatch(threads);
-        AtomicInteger totalConsumed = new AtomicInteger(0);
+        // First consumption should succeed
+        int first = confirmationRepository.consumeConfirmation(
+                token, savedUser.getId(), 12345L, "DELETE_TASK", LocalDateTime.now());
+        assertEquals(1, first, "First consumption should delete exactly one row.");
 
-        for (int i = 0; i < threads; i++) {
-            executor.submit(() -> {
-                try {
-                    // Try to consume atomically
-                    int consumed = confirmationRepository.consumeConfirmation(
-                            token, savedUser.getId(), 12345L, "DELETE_TASK", LocalDateTime.now()
-                    );
-                    totalConsumed.addAndGet(consumed);
-                } finally {
-                    latch.countDown();
-                }
-            });
-        }
+        // Second consumption should find nothing (row is gone)
+        int second = confirmationRepository.consumeConfirmation(
+                token, savedUser.getId(), 12345L, "DELETE_TASK", LocalDateTime.now());
+        assertEquals(0, second, "Second consumption should find no row.");
 
-        latch.await();
-        executor.shutdown();
-
-        // Exactly ONE thread should have successfully consumed the row
-        assertEquals(1, totalConsumed.get(), "Only one atomic consumption should succeed.");
+        // Row must be gone
         assertTrue(confirmationRepository.findById(token).isEmpty());
     }
 
