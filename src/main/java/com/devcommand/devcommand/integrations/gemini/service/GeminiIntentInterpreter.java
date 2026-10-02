@@ -51,10 +51,23 @@ public class GeminiIntentInterpreter implements NaturalLanguageInterpreter {
         this.objectMapper = objectMapper;
     }
 
+    /** Maximum length of natural-language input we will forward to Gemini. Protects against
+     *  token abuse and potential prompt-injection via oversized payloads. */
+    private static final int MAX_INPUT_LENGTH = 4000;
+
     @Override
     public InterpretationResult interpret(Long userId, String naturalText) {
         if (properties.getApiKey() == null || properties.getApiKey().isBlank()) {
             throw new GeminiApiException("Gemini API key is not configured.");
+        }
+
+        if (naturalText == null || naturalText.isBlank()) {
+            return InterpretationResult.invalid();
+        }
+
+        if (naturalText.length() > MAX_INPUT_LENGTH) {
+            log.warn("Rejected Gemini interpretation request: input length {} exceeds max {}", naturalText.length(), MAX_INPUT_LENGTH);
+            return InterpretationResult.invalid();
         }
 
         try {

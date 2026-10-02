@@ -11,6 +11,8 @@ import com.devcommand.devcommand.jobs.entity.JobApplication;
 import com.devcommand.devcommand.jobs.repository.JobApplicationRepository;
 import com.devcommand.devcommand.learning.entity.LearningTopic;
 import com.devcommand.devcommand.learning.repository.LearningTopicRepository;
+import com.devcommand.devcommand.integrations.telegram.repository.TelegramPendingConfirmationRepository;
+import com.devcommand.devcommand.tasks.repository.DailyTaskRepository;
 import com.devcommand.devcommand.user.entity.User;
 import com.devcommand.devcommand.user.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,13 +41,22 @@ public class Phase2CommandIntegrationTest extends AbstractIntegrationTest {
     @Autowired
     private LearningTopicRepository learningTopicRepository;
 
+    @Autowired
+    private TelegramPendingConfirmationRepository confirmationRepository;
+
+    @Autowired
+    private DailyTaskRepository dailyTaskRepository;
+
     private User testUser;
 
     @BeforeEach
     void setup() {
+        // Delete in FK-safe order: child tables first, then users
+        confirmationRepository.deleteAll();
         dsaProblemRepository.deleteAll();
         jobApplicationRepository.deleteAll();
         learningTopicRepository.deleteAll();
+        dailyTaskRepository.deleteAll();
         userRepository.deleteAll();
 
         User user = new User();
