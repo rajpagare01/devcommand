@@ -6,6 +6,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
+import jakarta.validation.constraints.Size;
 
 /**
  * POST /api/learning body. No userId field on purpose - the owner is
@@ -14,9 +15,11 @@ import jakarta.validation.constraints.PositiveOrZero;
  */
 public record CreateLearningTopicRequest(
         @NotBlank(message = "Technology is required")
+        @Size(max = 255, message = "Technology must be at most 255 characters")
         String technology,
 
         @NotBlank(message = "Topic is required")
+        @Size(max = 255, message = "Topic must be at most 255 characters")
         String topic,
 
         @NotNull(message = "Progress is required")
@@ -30,7 +33,10 @@ public record CreateLearningTopicRequest(
         @PositiveOrZero(message = "Hours spent cannot be negative")
         Double hoursSpent,
 
+        @Size(max = 2048, message = "Resource URL must be at most 2048 characters")
         String resourceUrl,
+
+        @Size(max = 2000, message = "Notes must be at most 2000 characters")
         String notes
 ) {
 }

@@ -4,15 +4,12 @@ import com.devcommand.devcommand.jobs.entity.InterviewStatus;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
 
 import java.time.LocalDateTime;
 
 /**
- * POST /api/jobs/{jobId}/interviews body. No jobApplicationId/userId
- * fields - the parent job comes from the URL path, and its ownership is
- * verified in the service layer before this request is ever applied. The
- * client cannot attach an interview round to a job it doesn't own by
- * supplying a different ID here, because there's no ID field to supply.
+ * POST /api/jobs/{jobId}/interviews body.
  */
 public record CreateInterviewRoundRequest(
         @NotNull(message = "Round number is required")
@@ -20,6 +17,7 @@ public record CreateInterviewRoundRequest(
         Integer roundNumber,
 
         @NotBlank(message = "Round type is required")
+        @Size(max = 255, message = "Round type must be at most 255 characters")
         String roundType,
 
         LocalDateTime scheduledAt,
@@ -27,7 +25,10 @@ public record CreateInterviewRoundRequest(
         @NotNull(message = "Status is required")
         InterviewStatus status,
 
+        @Size(max = 2000, message = "Feedback must be at most 2000 characters")
         String feedback,
+
+        @Size(max = 2000, message = "Notes must be at most 2000 characters")
         String notes
 ) {
 }

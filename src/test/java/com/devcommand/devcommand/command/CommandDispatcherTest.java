@@ -1,6 +1,8 @@
 package com.devcommand.devcommand.command;
 
 import com.devcommand.devcommand.command.handler.CommandHandler;
+import com.devcommand.devcommand.metrics.DevCommandMetrics;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,7 +25,8 @@ class CommandDispatcherTest {
 
     @BeforeEach
     void setUp() {
-        dispatcher = new CommandDispatcher(List.of(mockHandler));
+        DevCommandMetrics metrics = new DevCommandMetrics(new SimpleMeterRegistry());
+        dispatcher = new CommandDispatcher(List.of(mockHandler), metrics);
     }
 
     @Test

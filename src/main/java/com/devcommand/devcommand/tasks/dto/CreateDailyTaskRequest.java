@@ -19,6 +19,7 @@ public record CreateDailyTaskRequest(
         @Size(max = 255, message = "Title must be at most 255 characters")
         String title,
 
+        @Size(max = 2000, message = "Description must be at most 2000 characters")
         String description,
 
         @NotNull(message = "Category is required")

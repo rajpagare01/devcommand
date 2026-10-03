@@ -20,7 +20,21 @@ public interface LearningTopicRepository extends JpaRepository<LearningTopic, Lo
 
     long countByUserId(Long userId);
     long countByUserIdAndStatus(Long userId, com.devcommand.devcommand.learning.entity.LearningStatus status);
-    
+
+    /**
+     * Case-insensitive lookup by topic name or technology name, always scoped to the owner.
+     * Replaces the former in-memory scan (findAll + equalsIgnoreCase iteration).
+     * Both predicates are guarded by user.id = :userId, so cross-user results are impossible.
+     */
+    @org.springframework.data.jpa.repository.Query(
+            "SELECT l FROM LearningTopic l WHERE l.user.id = :userId " +
+            "AND (LOWER(l.topic) = LOWER(:name) OR LOWER(l.technology) = LOWER(:name))"
+    )
+    java.util.List<LearningTopic> findByUserIdAndTopicOrTechnologyIgnoreCase(
+            @org.springframework.data.repository.query.Param("userId") Long userId,
+            @org.springframework.data.repository.query.Param("name") String name
+    );
+
     public interface LearningAnalyticsProjection {
         Long getTotal();
         Long getNotStarted();

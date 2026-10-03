@@ -6,20 +6,18 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
+import jakarta.validation.constraints.Size;
 
 /**
- * PUT /api/learning/{id} body - full replace of the editable fields, same
- * shape/required-ness as create (same PUT-as-full-replace assumption used
- * throughout the DSA/Tasks/Jobs modules). No owner field - there is
- * nowhere in this DTO the client could reassign a topic, since the
- * service loads it by (id, callerUserId) and only mutates the
- * already-owned managed entity.
+ * PUT /api/learning/{id} body - full replace.
  */
 public record UpdateLearningTopicRequest(
         @NotBlank(message = "Technology is required")
+        @Size(max = 255, message = "Technology must be at most 255 characters")
         String technology,
 
         @NotBlank(message = "Topic is required")
+        @Size(max = 255, message = "Topic must be at most 255 characters")
         String topic,
 
         @NotNull(message = "Progress is required")
@@ -33,7 +31,10 @@ public record UpdateLearningTopicRequest(
         @PositiveOrZero(message = "Hours spent cannot be negative")
         Double hoursSpent,
 
+        @Size(max = 2048, message = "Resource URL must be at most 2048 characters")
         String resourceUrl,
+
+        @Size(max = 2000, message = "Notes must be at most 2000 characters")
         String notes
 ) {
 }

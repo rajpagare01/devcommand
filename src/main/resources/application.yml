@@ -29,10 +29,12 @@ management:
   endpoints:
     web:
       exposure:
-        include: health
+        include: health,metrics,info
   endpoint:
     health:
       show-details: when_authorized
+    metrics:
+      enabled: true
 
 devcommand:
   jwt:

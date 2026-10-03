@@ -36,12 +36,6 @@ class CommandHandlerRegistryValidatorTest {
             public String toString() {
                 return "StubHandler[" + type + "]";
             }
-
-            @Override
-            public Class<?> getClass() {
-                // Override to give a recognisable class name in error messages
-                return this.getClass();
-            }
         };
     }
 

@@ -63,6 +63,12 @@ class DailyTaskControllerTest {
     @MockBean
     private org.springframework.security.core.userdetails.UserDetailsService userDetailsService;
 
+    @MockBean
+    private com.devcommand.devcommand.ratelimit.service.RateLimitService rateLimitService;
+
+    @MockBean
+    private com.devcommand.devcommand.metrics.DevCommandMetrics devCommandMetrics;
+
     @Autowired
     private ObjectMapper objectMapper;
 
