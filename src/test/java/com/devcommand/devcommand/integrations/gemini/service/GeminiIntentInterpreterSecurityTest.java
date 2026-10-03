@@ -37,14 +37,14 @@ class GeminiIntentInterpreterSecurityTest {
     void interpret_missingApiKey_throwsGeminiApiException() {
         when(properties.getApiKey()).thenReturn(null);
         assertThrows(GeminiApiException.class,
-                () -> interpreter.interpret(1L, "add a task"));
+                () -> interpreter.interpret(1L, "add a task", null));
     }
 
     @Test
     void interpret_blankApiKey_throwsGeminiApiException() {
         when(properties.getApiKey()).thenReturn("   ");
         assertThrows(GeminiApiException.class,
-                () -> interpreter.interpret(1L, "add a task"));
+                () -> interpreter.interpret(1L, "add a task", null));
     }
 
     // ------------------------------------------------------------------ Input length guards
@@ -52,7 +52,7 @@ class GeminiIntentInterpreterSecurityTest {
     @Test
     void interpret_nullInput_returnsInvalidModelResponse() {
         when(properties.getApiKey()).thenReturn("valid-key");
-        InterpretationResult result = interpreter.interpret(1L, null);
+        InterpretationResult result = interpreter.interpret(1L, null, null);
         assertEquals(InterpretationStatus.INVALID_MODEL_RESPONSE, result.status());
         // Must never reach the HTTP client
         verifyNoInteractions(httpClient);
@@ -61,7 +61,7 @@ class GeminiIntentInterpreterSecurityTest {
     @Test
     void interpret_blankInput_returnsInvalidModelResponse() {
         when(properties.getApiKey()).thenReturn("valid-key");
-        InterpretationResult result = interpreter.interpret(1L, "   ");
+        InterpretationResult result = interpreter.interpret(1L, "   ", null);
         assertEquals(InterpretationStatus.INVALID_MODEL_RESPONSE, result.status());
         verifyNoInteractions(httpClient);
     }
@@ -70,7 +70,7 @@ class GeminiIntentInterpreterSecurityTest {
     void interpret_inputExceedsMaxLength_returnsInvalidWithoutCallingApi() {
         when(properties.getApiKey()).thenReturn("valid-key");
         String oversized = "A".repeat(4001);
-        InterpretationResult result = interpreter.interpret(1L, oversized);
+        InterpretationResult result = interpreter.interpret(1L, oversized, null);
         assertEquals(InterpretationStatus.INVALID_MODEL_RESPONSE, result.status());
         // No HTTP call must be made
         verifyNoInteractions(httpClient);
@@ -92,7 +92,7 @@ class GeminiIntentInterpreterSecurityTest {
 
         String exactMax = "A".repeat(4000);
         assertThrows(GeminiApiException.class,
-                () -> interpreter.interpret(1L, exactMax));
+                () -> interpreter.interpret(1L, exactMax, null));
 
         // The HTTP client was actually called - meaning the length guard passed
         verify(httpClient).send(any(), any());
@@ -101,7 +101,7 @@ class GeminiIntentInterpreterSecurityTest {
     // ------------------------------------------------------------------ Allowlist enforcement
 
     @Test
-    void interpret_geminiReturnsUnsupportedAction_returnsUnsupported() throws Exception {
+    void interpret_geminiReturnsConfirmAction_returnsReady() throws Exception {
         when(properties.getApiKey()).thenReturn("valid-key");
         when(properties.getApiUrl()).thenReturn("https://example.com/");
         when(properties.getModel()).thenReturn("gemini");
@@ -115,12 +115,12 @@ class GeminiIntentInterpreterSecurityTest {
         when(mockResponse.body()).thenReturn(geminiBody);
         doReturn(mockResponse).when(httpClient).send(any(), any());
 
-        InterpretationResult result = interpreter.interpret(1L, "confirm my action");
-        assertEquals(InterpretationStatus.UNSUPPORTED, result.status());
+        InterpretationResult result = interpreter.interpret(1L, "confirm my action", null);
+        assertEquals(InterpretationStatus.READY, result.status());
     }
 
     @Test
-    void interpret_geminiReturnsCancelAction_returnsUnsupported() throws Exception {
+    void interpret_geminiReturnsCancelAction_returnsReady() throws Exception {
         when(properties.getApiKey()).thenReturn("valid-key");
         when(properties.getApiUrl()).thenReturn("https://example.com/");
         when(properties.getModel()).thenReturn("gemini");
@@ -134,8 +134,8 @@ class GeminiIntentInterpreterSecurityTest {
         when(mockResponse.body()).thenReturn(geminiBody);
         doReturn(mockResponse).when(httpClient).send(any(), any());
 
-        InterpretationResult result = interpreter.interpret(1L, "cancel");
-        assertEquals(InterpretationStatus.UNSUPPORTED, result.status());
+        InterpretationResult result = interpreter.interpret(1L, "cancel", null);
+        assertEquals(InterpretationStatus.READY, result.status());
     }
 
     @Test
@@ -153,7 +153,7 @@ class GeminiIntentInterpreterSecurityTest {
         when(mockResponse.body()).thenReturn(geminiBody);
         doReturn(mockResponse).when(httpClient).send(any(), any());
 
-        InterpretationResult result = interpreter.interpret(1L, "show today tasks");
+        InterpretationResult result = interpreter.interpret(1L, "show today tasks", null);
         assertEquals(InterpretationStatus.UNSUPPORTED, result.status());
     }
 
@@ -172,7 +172,7 @@ class GeminiIntentInterpreterSecurityTest {
         when(mockResponse.body()).thenReturn(geminiBody);
         doReturn(mockResponse).when(httpClient).send(any(), any());
 
-        InterpretationResult result = interpreter.interpret(1L, "drop table");
+        InterpretationResult result = interpreter.interpret(1L, "drop table", null);
         assertEquals(InterpretationStatus.INVALID_MODEL_RESPONSE, result.status());
     }
 
@@ -191,7 +191,7 @@ class GeminiIntentInterpreterSecurityTest {
         when(mockResponse.body()).thenReturn(geminiBody);
         doReturn(mockResponse).when(httpClient).send(any(), any());
 
-        InterpretationResult result = interpreter.interpret(1L, "tell me a joke");
+        InterpretationResult result = interpreter.interpret(1L, "tell me a joke", null);
         assertEquals(InterpretationStatus.UNSUPPORTED, result.status());
     }
 
@@ -211,7 +211,7 @@ class GeminiIntentInterpreterSecurityTest {
         when(mockResponse.body()).thenReturn(geminiBody);
         doReturn(mockResponse).when(httpClient).send(any(), any());
 
-        InterpretationResult result = interpreter.interpret(1L, "add something");
+        InterpretationResult result = interpreter.interpret(1L, "add something", null);
         assertEquals(InterpretationStatus.CLARIFICATION_REQUIRED, result.status());
         assertEquals("What is the title?", result.message());
     }
@@ -238,7 +238,7 @@ class GeminiIntentInterpreterSecurityTest {
         // Command constructor calls parameters.rejectKey("userId") -> CommandException ->
         // interpreter wraps it in GeminiApiException
         assertThrows(GeminiApiException.class,
-                () -> interpreter.interpret(1L, "create task"));
+                () -> interpreter.interpret(1L, "create task", null));
     }
 
     // ------------------------------------------------------------------ Gemini API error scenarios
@@ -256,7 +256,7 @@ class GeminiIntentInterpreterSecurityTest {
         doReturn(mockResponse).when(httpClient).send(any(), any());
 
         assertThrows(GeminiApiException.class,
-                () -> interpreter.interpret(1L, "add a task"));
+                () -> interpreter.interpret(1L, "add a task", null));
     }
 
     @Test
@@ -272,7 +272,7 @@ class GeminiIntentInterpreterSecurityTest {
         doReturn(mockResponse).when(httpClient).send(any(), any());
 
         assertThrows(GeminiApiException.class,
-                () -> interpreter.interpret(1L, "add a task"));
+                () -> interpreter.interpret(1L, "add a task", null));
     }
 
     @Test
@@ -290,7 +290,7 @@ class GeminiIntentInterpreterSecurityTest {
         when(mockResponse.body()).thenReturn(geminiBody);
         doReturn(mockResponse).when(httpClient).send(any(), any());
 
-        InterpretationResult result = interpreter.interpret(1L, "something");
+        InterpretationResult result = interpreter.interpret(1L, "something", null);
         assertEquals(InterpretationStatus.INVALID_MODEL_RESPONSE, result.status());
     }
 

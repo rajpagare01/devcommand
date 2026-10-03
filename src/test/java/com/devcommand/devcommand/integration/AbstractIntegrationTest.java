@@ -16,7 +16,7 @@ public abstract class AbstractIntegrationTest {
         registry.add("spring.datasource.password", () -> "yzgD7jMECT4txBJa09fHpFwi");
         registry.add("spring.datasource.driver-class-name", () -> "org.postgresql.Driver");
 
-        registry.add("spring.jpa.hibernate.ddl-auto", () -> "create-drop");
+        registry.add("spring.jpa.hibernate.ddl-auto", () -> "validate");
 
         registry.add(
                 "devcommand.jwt.secret",

@@ -56,7 +56,7 @@ public class GeminiIntentInterpreter implements NaturalLanguageInterpreter {
     private static final int MAX_INPUT_LENGTH = 4000;
 
     @Override
-    public InterpretationResult interpret(Long userId, String naturalText) {
+    public InterpretationResult interpret(Long userId, String naturalText, String conversationContext) {
         if (properties.getApiKey() == null || properties.getApiKey().isBlank()) {
             throw new GeminiApiException("Gemini API key is not configured.");
         }
@@ -71,7 +71,7 @@ public class GeminiIntentInterpreter implements NaturalLanguageInterpreter {
         }
 
         try {
-            String payload = buildRequestPayload(naturalText);
+            String payload = buildRequestPayload(naturalText, conversationContext);
             String url = properties.getApiUrl() + properties.getModel() + ":generateContent?key=" + properties.getApiKey();
 
             HttpRequest request = HttpRequest.newBuilder()
@@ -103,7 +103,10 @@ public class GeminiIntentInterpreter implements NaturalLanguageInterpreter {
             }
 
             if (intent.clarificationQuestion() != null && !intent.clarificationQuestion().isBlank()) {
-                return InterpretationResult.clarification(intent.clarificationQuestion());
+                java.util.Map<String, Object> pending = new java.util.HashMap<>();
+                if (intent.action() != null) pending.put("action", intent.action());
+                if (intent.parameters() != null) pending.put("parameters", intent.parameters());
+                return InterpretationResult.clarification(intent.clarificationQuestion(), pending);
             }
 
             if (intent.action() == null) {
@@ -118,9 +121,8 @@ public class GeminiIntentInterpreter implements NaturalLanguageInterpreter {
                 return InterpretationResult.invalid();
             }
             
-            // Validate allowlist for Phase 1 & 2
-            if (type != CommandType.CREATE_TASK && type != CommandType.READ_PENDING_TASKS && type != CommandType.COMPLETE_TASK && type != CommandType.DELETE_TASK && type != CommandType.CREATE_DSA_PROBLEM && type != CommandType.READ_DSA_STATS && type != CommandType.CREATE_JOB_APPLICATION && type != CommandType.READ_JOB_PIPELINE && type != CommandType.UPDATE_LEARNING_PROGRESS && type != CommandType.READ_LEARNING_PROGRESS) {
-                log.warn("Gemini returned unsupported action in Phase 1 & 2: {}", type);
+            if (type.isReserved()) {
+                log.warn("Gemini returned reserved action: {}", type);
                 return InterpretationResult.unsupported();
             }
 
@@ -139,13 +141,20 @@ public class GeminiIntentInterpreter implements NaturalLanguageInterpreter {
         }
     }
 
-    private String buildRequestPayload(String naturalText) throws Exception {
+    private String buildRequestPayload(String naturalText, String conversationContext) throws Exception {
         var root = objectMapper.createObjectNode();
         
         // systemInstruction
         var systemInstruction = root.putObject("systemInstruction");
         var sysParts = systemInstruction.putArray("parts");
-        sysParts.addObject().put("text", SYSTEM_PROMPT);
+        
+        String prompt = SYSTEM_PROMPT;
+        if (conversationContext != null && !conversationContext.isBlank()) {
+            prompt += "\n\nCurrent Context:\n" + conversationContext;
+            prompt += "\n\nUse the context to fill in missing parameters if the user refers to it implicitly (e.g. 'mark it done', 'update to 50%').";
+        }
+        
+        sysParts.addObject().put("text", prompt);
         
         // contents
         var contents = root.putArray("contents");

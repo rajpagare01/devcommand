@@ -37,6 +37,15 @@ public class AnalyticsControllerTest {
     @MockBean
     private JwtService jwtService;
 
+    @MockBean
+    private org.springframework.security.core.userdetails.UserDetailsService userDetailsService;
+
+    @MockBean
+    private com.devcommand.devcommand.ratelimit.service.RateLimitService rateLimitService;
+
+    @MockBean
+    private com.devcommand.devcommand.metrics.DevCommandMetrics devCommandMetrics;
+
     private UserPrincipal userA;
     private UserPrincipal userB;
 

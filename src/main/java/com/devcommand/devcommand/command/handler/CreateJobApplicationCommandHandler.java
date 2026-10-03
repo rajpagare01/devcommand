@@ -43,7 +43,7 @@ public class CreateJobApplicationCommandHandler implements CommandHandler {
                 null // notes
         );
 
-        jobApplicationService.create(request, command.userId());
-        return CommandResult.success("Tracked application for " + role + " at " + company + " (" + status + ")!");
+        var response = jobApplicationService.create(request, command.userId());
+        return CommandResult.success("Tracked application for " + role + " at " + company + " (" + status + ")!", response);
     }
 }

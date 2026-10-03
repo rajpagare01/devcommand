@@ -11,6 +11,8 @@ import com.devcommand.devcommand.integrations.telegram.entity.TelegramProcessedU
 import com.devcommand.devcommand.integrations.telegram.repository.TelegramProcessedUpdateRepository;
 import com.devcommand.devcommand.integrations.whatsapp.service.DeterministicCommandParser;
 import com.devcommand.devcommand.integrations.gemini.service.NaturalLanguageInterpreter;
+import com.devcommand.devcommand.conversation.service.ConversationContextService;
+import com.devcommand.devcommand.conversation.model.ContextType;
 import com.devcommand.devcommand.user.entity.User;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -46,6 +48,7 @@ public class TelegramBotService {
     private final ObjectMapper objectMapper;
     private final TelegramBootstrapService bootstrapService;
     private final NaturalLanguageInterpreter interpreter;
+    private final ConversationContextService contextService;
 
     private final HttpClient httpClient;
     private final AtomicBoolean running = new AtomicBoolean(false);
@@ -60,7 +63,8 @@ public class TelegramBotService {
                               ObjectMapper objectMapper,
                               HttpClient httpClient,
                               TelegramBootstrapService bootstrapService,
-                              NaturalLanguageInterpreter interpreter) {
+                              NaturalLanguageInterpreter interpreter,
+                              ConversationContextService contextService) {
         this.properties = properties;
         this.updateProcessor = updateProcessor;
         this.parser = parser;
@@ -70,6 +74,7 @@ public class TelegramBotService {
         this.httpClient = httpClient;
         this.bootstrapService = bootstrapService;
         this.interpreter = interpreter;
+        this.contextService = contextService;
     }
 
     @PostConstruct
@@ -235,12 +240,23 @@ public class TelegramBotService {
             } else {
                 // Fallback to Gemini
                 try {
-                    com.devcommand.devcommand.integrations.gemini.service.InterpretationResult result = interpreter.interpret(user.getId(), text);
+                    String contextJson = null;
+                    Optional<com.devcommand.devcommand.conversation.entity.ConversationContext> contextOpt = contextService.getContext(user.getId(), String.valueOf(chatId));
+                    if (contextOpt.isPresent()) {
+                        try {
+                            contextJson = objectMapper.writeValueAsString(contextOpt.get().getContextData());
+                        } catch (Exception ignored) {}
+                    }
+                    
+                    com.devcommand.devcommand.integrations.gemini.service.InterpretationResult result = interpreter.interpret(user.getId(), text, contextJson);
                     switch (result.status()) {
                         case READY:
                             finalCommand = result.command();
                             break;
                         case CLARIFICATION_REQUIRED:
+                            if (result.pendingContext() != null && !result.pendingContext().isEmpty()) {
+                                contextService.updateContext(user.getId(), String.valueOf(chatId), ContextType.PENDING_CLARIFICATION, result.pendingContext());
+                            }
                             sendMessage(chatId, result.message());
                             updateProcessor.markProcessed(updateId);
                             return true;
@@ -285,6 +301,7 @@ public class TelegramBotService {
             CommandResult result = updateProcessor.processAndMark(finalCommand, updateId);
             if (result.success()) {
                 sendMessage(chatId, "✅ " + result.message());
+                updateContextAfterSuccess(user.getId(), String.valueOf(chatId), finalCommand.type(), result.data());
             } else {
                 sendMessage(chatId, "❌ " + result.message());
             }
@@ -334,6 +351,22 @@ public class TelegramBotService {
             }
         } catch (Exception e) {
             log.error("Exception while sending Telegram message", e);
+        }
+    }
+
+    private void updateContextAfterSuccess(Long userId, String chatId, com.devcommand.devcommand.command.CommandType type, Object responseData) {
+        if (responseData == null) return;
+        try {
+            java.util.Map<String, Object> dataMap = objectMapper.convertValue(responseData, new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String, Object>>() {});
+            switch (type) {
+                case CREATE_TASK -> contextService.updateContext(userId, chatId, ContextType.LAST_TASK, dataMap);
+                case CREATE_DSA_PROBLEM -> contextService.updateContext(userId, chatId, ContextType.LAST_DSA_PROBLEM, dataMap);
+                case CREATE_JOB_APPLICATION -> contextService.updateContext(userId, chatId, ContextType.LAST_JOB_APPLICATION, dataMap);
+                case UPDATE_LEARNING_PROGRESS -> contextService.updateContext(userId, chatId, ContextType.LAST_LEARNING_TOPIC, dataMap);
+                default -> {}
+            }
+        } catch (Exception e) {
+            log.warn("Failed to update context after success", e);
         }
     }
 }

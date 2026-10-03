@@ -23,6 +23,7 @@ import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
+import com.devcommand.devcommand.conversation.service.ConversationContextService;
 
 @ExtendWith(MockitoExtension.class)
 class TelegramBotServiceTest {
@@ -40,6 +41,8 @@ class TelegramBotServiceTest {
     private TelegramBootstrapService bootstrapService;
     @Mock
     private NaturalLanguageInterpreter interpreter;
+    @Mock
+    private ConversationContextService contextService;
 
 
 @BeforeEach
@@ -53,7 +56,8 @@ void setUp() {
             objectMapper,
             httpClient,
             bootstrapService,
-            interpreter
+            interpreter,
+            contextService
     );
 }
     @Test
@@ -238,7 +242,7 @@ void setUp() {
 
         // Gemini handles it
         Command mockCommand = new Command(CommandType.CREATE_TASK, 1L, new com.devcommand.devcommand.command.CommandParameters(java.util.Collections.emptyMap()));
-        when(interpreter.interpret(1L, "add a task please")).thenReturn(com.devcommand.devcommand.integrations.gemini.service.InterpretationResult.ready(mockCommand));
+        when(interpreter.interpret(1L, "add a task please", (String) null)).thenReturn(com.devcommand.devcommand.integrations.gemini.service.InterpretationResult.ready(mockCommand));
         
         when(updateProcessor.processAndMark(any(Command.class), eq(10L))).thenReturn(CommandResult.success("Task created via AI"));
 

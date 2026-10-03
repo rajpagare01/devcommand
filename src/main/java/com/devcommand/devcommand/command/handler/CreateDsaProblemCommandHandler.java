@@ -49,7 +49,7 @@ public class CreateDsaProblemCommandHandler implements CommandHandler {
                 null // revisionDate
         );
 
-        dsaProblemService.create(request, command.userId());
-        return CommandResult.success("Tracked " + difficulty + " problem '" + title + "' on " + platform + "!");
+        var response = dsaProblemService.create(request, command.userId());
+        return CommandResult.success("Tracked " + difficulty + " problem '" + title + "' on " + platform + "!", response);
     }
 }

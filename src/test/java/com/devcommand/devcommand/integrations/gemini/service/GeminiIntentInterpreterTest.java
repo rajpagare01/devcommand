@@ -55,7 +55,7 @@ class GeminiIntentInterpreterTest {
         when(mockResponse.body()).thenReturn(responseBody);
         when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(mockResponse);
 
-        InterpretationResult result = interpreter.interpret(1L, "create a task called Test task");
+        InterpretationResult result = interpreter.interpret(1L, "create a task called Test task", null);
 
         assertEquals(InterpretationStatus.READY, result.status());
         assertEquals(CommandType.CREATE_TASK, result.command().type());
@@ -86,7 +86,7 @@ class GeminiIntentInterpreterTest {
         when(mockResponse.body()).thenReturn(responseBody);
         when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(mockResponse);
 
-        InterpretationResult result = interpreter.interpret(1L, "order me a pizza");
+        InterpretationResult result = interpreter.interpret(1L, "order me a pizza", null);
 
         assertEquals(InterpretationStatus.UNSUPPORTED, result.status());
     }
@@ -115,7 +115,7 @@ class GeminiIntentInterpreterTest {
         when(mockResponse.body()).thenReturn(responseBody);
         when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(mockResponse);
 
-        InterpretationResult result = interpreter.interpret(1L, "add a task");
+        InterpretationResult result = interpreter.interpret(1L, "add a task", null);
 
         assertEquals(InterpretationStatus.CLARIFICATION_REQUIRED, result.status());
         assertEquals("What should the task title be?", result.message());
@@ -128,6 +128,6 @@ class GeminiIntentInterpreterTest {
         when(mockResponse.statusCode()).thenReturn(503);
         when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(mockResponse);
 
-        assertThrows(GeminiApiException.class, () -> interpreter.interpret(1L, "hello"));
+        assertThrows(GeminiApiException.class, () -> interpreter.interpret(1L, "hello", null));
     }
 }

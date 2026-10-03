@@ -67,11 +67,11 @@ twilio:
   content-sid: ${TWILIO_CONTENT_SID:}
 
 telegram:
-  bot-token: ${TELEGRAM_BOT_TOKEN:}
-  allowed-user-id: ${TELEGRAM_ALLOWED_USER_ID:}
+  bot-token: ${TELEGRAM_BOT_TOKEN}
+  allowed-user-id: ${TELEGRAM_ALLOWED_USER_ID}
 
 gemini:
-  api-key: ${GEMINI_API_KEY:}
+  api-key: ${GEMINI_API_KEY}
   api-url: ${GEMINI_API_URL:https://generativelanguage.googleapis.com/v1beta/models/}
   model: ${GEMINI_MODEL:gemini-1.5-flash}
   timeout-seconds: ${GEMINI_TIMEOUT_SECONDS:10}

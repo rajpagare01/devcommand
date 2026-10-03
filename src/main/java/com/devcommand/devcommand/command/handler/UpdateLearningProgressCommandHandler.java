@@ -63,13 +63,13 @@ public class UpdateLearningProgressCommandHandler implements CommandHandler {
                     target.getResourceUrl(),
                     target.getNotes()
             );
-            learningTopicService.update(target.getId(), command.userId(), updateRequest);
-            return CommandResult.success("Added " + hours + " hours. Total spent on '" + target.getTopic() + "' is now " + newHours + " hours.");
+            var response = learningTopicService.update(target.getId(), command.userId(), updateRequest);
+            return CommandResult.success("Added " + hours + " hours. Total spent on '" + target.getTopic() + "' is now " + newHours + " hours.", response);
         } else if (progress != null) {
-            learningTopicService.updateProgress(target.getId(), command.userId(), new ProgressUpdateRequest(progress));
-            return CommandResult.success("Updated progress for '" + target.getTopic() + "' to " + progress + "%.");
+            var response = learningTopicService.updateProgress(target.getId(), command.userId(), new ProgressUpdateRequest(progress));
+            return CommandResult.success("Updated progress for '" + target.getTopic() + "' to " + progress + "%.", response);
         } else {
-            return CommandResult.success("Updated learning activity for '" + target.getTopic() + "'.");
+            return CommandResult.success("Updated learning activity for '" + target.getTopic() + "'.", target);
         }
     }
 }
