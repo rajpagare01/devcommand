@@ -113,9 +113,13 @@ public class TelegramBotService {
                 if (response.statusCode() == 200) {
                     processUpdates(response.body());
                 } else {
-                    log.error("Telegram API error: HTTP {}", response.statusCode());
-                    Thread.sleep(5000);
-                }
+    log.error(
+        "Telegram API error: HTTP {} - {}",
+        response.statusCode(),
+        response.body()
+    );
+    Thread.sleep(5000);
+}
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 log.info("Telegram polling interrupted.");
