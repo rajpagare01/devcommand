@@ -1,17 +1,26 @@
-package com.devcommand.devcommand.integrations.gemini.config;
+package com.devcommand.devcommand.integrations.ai.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
-@ConfigurationProperties(prefix = "gemini")
-public class GeminiProperties {
+@ConfigurationProperties(prefix = "ai.groq")
+public class GroqProperties {
 
+    private boolean enabled = true;
     private String apiKey;
-    private String apiUrl = "https://generativelanguage.googleapis.com/v1beta/models/";
-    private String model = "gemini-3.7-flash";
+    private String apiUrl = "https://api.groq.com/openai/v1/chat/completions";
+    private String model = "qwen/qwen3.8-27b";
     private int timeoutSeconds = 30;
     private int maxRetries = 2;
+
+    public boolean isEnabled() {
+        return enabled;
+    }
+
+    public void setEnabled(boolean enabled) {
+        this.enabled = enabled;
+    }
 
     public String getApiKey() {
         return apiKey;

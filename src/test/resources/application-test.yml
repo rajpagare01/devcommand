@@ -1,0 +1,49 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://127.0.0.1:5432/devcommand_test
+    username: postgres
+    password: yzgD7jMECT4txBJa09fHpFwi
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+
+devcommand:
+  jwt:
+    secret: change-this-test-secret-key-that-is-long-enough-for-hs256
+    expiration-ms: 3600000
+
+twilio:
+  account-sid: test-sid
+  auth-token: test-token
+  whatsapp-number: whatsapp:+12345
+  content-sid: test-content-sid
+
+telegram:
+  bot-token: test-bot-token
+  allowed-user-id: 123456
+
+gemini:
+  api-key: test-api-key
+  api-url: https://generativelanguage.googleapis.com/v1beta/models/
+  model: gemini-1.5-flash
+  timeout-seconds: 30
+  max-retries: 2
+
+ai:
+  primary-provider: gemini
+  fallback-provider: groq
+  groq:
+    enabled: true
+    api-key: test-groq-key
+    api-url: https://api.groq.com/openai/v1/chat/completions
+    model: llama3-70b-8192
+    timeout-seconds: 30
+    max-retries: 2
+
+leetcode:
+  enabled: true
+  base-url: https://leetcode.com
+  timeout-seconds: 10

@@ -28,4 +28,4 @@ if (Test-Path ".env") {
 }
 
 Write-Host "Starting backend via Maven..." -ForegroundColor Green
-mvn spring-boot:run
+mvn spring-boot:run "-Dspring-boot.run.profiles=dev"

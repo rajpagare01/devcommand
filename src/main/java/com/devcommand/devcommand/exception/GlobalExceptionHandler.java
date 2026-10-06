@@ -69,6 +69,26 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred", request);
     }
 
+    @ExceptionHandler(com.devcommand.devcommand.dsa.exception.LeetCodeAccountAlreadyConnectedException.class)
+    public ResponseEntity<ErrorResponse> handleLeetCodeConflict(com.devcommand.devcommand.dsa.exception.LeetCodeAccountAlreadyConnectedException ex, HttpServletRequest request) {
+        return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(com.devcommand.devcommand.dsa.exception.LeetCodeAccountNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleLeetCodeAccountNotFound(com.devcommand.devcommand.dsa.exception.LeetCodeAccountNotFoundException ex, HttpServletRequest request) {
+        return build(HttpStatus.NOT_FOUND, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(com.devcommand.devcommand.dsa.exception.LeetCodeProfileNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleLeetCodeProfileNotFound(com.devcommand.devcommand.dsa.exception.LeetCodeProfileNotFoundException ex, HttpServletRequest request) {
+        return build(HttpStatus.NOT_FOUND, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(com.devcommand.devcommand.dsa.exception.LeetCodeIntegrationException.class)
+    public ResponseEntity<ErrorResponse> handleLeetCodeIntegrationException(com.devcommand.devcommand.dsa.exception.LeetCodeIntegrationException ex, HttpServletRequest request) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+    }
+
     private ResponseEntity<ErrorResponse> build(HttpStatus status, String message, HttpServletRequest request) {
         ErrorResponse body = ErrorResponse.of(status.value(), status.getReasonPhrase(), message, request.getRequestURI());
         return ResponseEntity.status(status).body(body);

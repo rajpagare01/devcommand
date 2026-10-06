@@ -5,6 +5,7 @@ import com.devcommand.devcommand.metrics.DevCommandMetrics;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Set;
 
 /**
  * Dispatches a parsed Command to the appropriate CommandHandler.
@@ -33,6 +34,13 @@ public class CommandDispatcher {
         metrics.recordCommandDispatched(typeName);
 
         try {
+            Set<String> allowed = command.type().allowedParameters();
+            for (String key : command.parameters().asMap().keySet()) {
+                if (!allowed.contains(key) && !"chatId".equals(key) && !"userId".equals(key)) {
+                    throw new CommandException("Invalid parameter: " + key);
+                }
+            }
+
             CommandHandler handler = handlers.stream()
                     .filter(h -> h.supports(command.type()))
                     .findFirst()

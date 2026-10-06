@@ -87,6 +87,20 @@ public class DevCommandMetrics {
         counter("devcommand.telegram.processing.failure").increment();
     }
 
+    // ------------------------------------------------------------------ DSA Integration metrics
+
+    public void recordDsaSyncAttempt(String platform) {
+        counter("devcommand.dsa.sync.attempt", "platform", safe(platform)).increment();
+    }
+
+    public void recordDsaSyncSuccess(String platform) {
+        counter("devcommand.dsa.sync.success", "platform", safe(platform)).increment();
+    }
+
+    public void recordDsaSyncFailure(String platform) {
+        counter("devcommand.dsa.sync.failure", "platform", safe(platform)).increment();
+    }
+
     // ------------------------------------------------------------------ Helpers
 
     private Counter counter(String name, String... tags) {

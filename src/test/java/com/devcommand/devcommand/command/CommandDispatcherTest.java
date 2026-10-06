@@ -58,4 +58,36 @@ class CommandDispatcherTest {
     void dispatch_NullCommand_ThrowsException() {
         assertThrows(CommandException.class, () -> dispatcher.dispatch(null));
     }
+
+    @Test
+    void dispatch_RejectUnsupportedParameters() {
+        // CREATE_TASK does not support 'unknownField'
+        Command command = new Command(CommandType.CREATE_TASK, 1L, Map.of("title", "Test", "unknownField", "value"));
+        
+        CommandResult result = dispatcher.dispatch(command);
+        
+        assertFalse(result.success());
+        assertEquals("Invalid parameter: unknownField", result.message());
+        verify(mockHandler, never()).handle(any(Command.class));
+    }
+
+    @Test
+    void dispatch_AcceptsValidParameters() {
+        when(mockHandler.supports(CommandType.CREATE_TASK)).thenReturn(true);
+        CommandResult expectedResult = CommandResult.success("Test");
+        when(mockHandler.handle(any(Command.class))).thenReturn(expectedResult);
+
+        // All these are valid for CREATE_TASK
+        Command command = new Command(CommandType.CREATE_TASK, 1L, Map.of(
+                "title", "Test", 
+                "description", "desc", 
+                "status", "COMPLETED",
+                "chatId", 12345L // chatId is explicitly allowed globally
+        ));
+        
+        CommandResult result = dispatcher.dispatch(command);
+        
+        assertTrue(result.success());
+        verify(mockHandler).handle(command);
+    }
 }

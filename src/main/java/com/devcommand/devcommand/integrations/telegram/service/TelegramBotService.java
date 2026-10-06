@@ -269,8 +269,8 @@ public class TelegramBotService {
                             updateProcessor.markProcessed(updateId);
                             return true;
                     }
-                } catch (com.devcommand.devcommand.integrations.gemini.service.GeminiApiException e) {
-                    log.error("Gemini API infrastructure failure", e);
+                } catch (com.devcommand.devcommand.integrations.ai.service.AiProviderException e) {
+                    log.error("AI API infrastructure failure", e);
                     sendMessage(chatId, "My AI assistant is temporarily unavailable. Please use the exact command format (e.g., 'add task: title').");
                     // Do not mark as processed if we want to retry? Actually, this is a user-facing action, we probably want to mark it 
                     // so they can try again, rather than repeatedly erroring on the same message and blocking the queue.
