@@ -10,7 +10,7 @@ import lombok.Setter;
 @Configuration
 @ConfigurationProperties(prefix = "leetcode")
 public class LeetCodeConfig {
-    private boolean enabled = false;
+    private boolean enabled = true;
     private String baseUrl = "https://leetcode.com";
     private int timeoutSeconds = 10;
 }

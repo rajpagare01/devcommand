@@ -9,7 +9,7 @@ public class GeminiProperties {
 
     private String apiKey;
     private String apiUrl = "https://generativelanguage.googleapis.com/v1beta/models/";
-    private String model = "gemini-3.7-flash";
+    private String model = "gemini-1.5-flash";
     private int timeoutSeconds = 30;
     private int maxRetries = 2;
 

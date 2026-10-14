@@ -10,7 +10,7 @@ public class GroqProperties {
     private boolean enabled = true;
     private String apiKey;
     private String apiUrl = "https://api.groq.com/openai/v1/chat/completions";
-    private String model = "qwen/qwen3.8-27b";
+    private String model = "llama-3.3-70b-versatile";
     private int timeoutSeconds = 30;
     private int maxRetries = 2;
 
