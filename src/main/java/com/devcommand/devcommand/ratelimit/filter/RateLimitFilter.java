@@ -103,9 +103,6 @@ public class RateLimitFilter extends OncePerRequestFilter {
         if (path.matches("/api/integrations/identities/\\d+/verify")) {
             return new RateLimitRule("identity:verify", 5);
         }
-        if (path.equals("/api/integrations/whatsapp/webhook")) {
-            return new RateLimitRule("whatsapp:webhook", 30);
-        }
 
         return null;
     }

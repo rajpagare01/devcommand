@@ -7,6 +7,14 @@ spring:
     username: ${DATABASE_USERNAME}
     password: ${DATABASE_PASSWORD}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 3
+      minimum-idle: 1
+      connection-timeout: 20000
+      idle-timeout: 300000
+      max-lifetime: 900000
+      pool-name: DevCommandHikariPool
+
   flyway:
     enabled: true
     baseline-on-migrate: false
@@ -17,11 +25,22 @@ spring:
     show-sql: false
     properties:
       hibernate:
-        format_sql: true
+        format_sql: false
+        generate_statistics: false
+        jdbc:
+          batch_size: 20
+        query:
+          plan_cache_max_size: 64
     open-in-view: false
 
 server:
   port: ${PORT:8080}
+  tomcat:
+    threads:
+      max: 15
+      min-spare: 2
+    max-connections: 50
+    accept-count: 20
 
 management:
   endpoints:
@@ -46,11 +65,6 @@ leetcode:
   base-url: ${LEETCODE_BASE_URL:https://leetcode.com}
   timeout-seconds: ${LEETCODE_TIMEOUT_SECONDS:10}
 
-twilio:
-  account-sid: ${TWILIO_ACCOUNT_SID:}
-  auth-token: ${TWILIO_AUTH_TOKEN:}
-  whatsapp-number: ${TWILIO_WHATSAPP_NUMBER:}
-  content-sid: ${TWILIO_CONTENT_SID:}
 
 telegram:
   bot-token: ${TELEGRAM_BOT_TOKEN:}

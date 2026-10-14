@@ -7,7 +7,7 @@ import com.devcommand.devcommand.command.identity.ExternalIdentity;
 import com.devcommand.devcommand.command.identity.ExternalIdentityResolver;
 import com.devcommand.devcommand.integrations.telegram.config.TelegramProperties;
 import com.devcommand.devcommand.integrations.telegram.repository.TelegramProcessedUpdateRepository;
-import com.devcommand.devcommand.integrations.whatsapp.service.DeterministicCommandParser;
+import com.devcommand.devcommand.command.parser.DeterministicCommandParser;
 import com.devcommand.devcommand.integrations.gemini.service.NaturalLanguageInterpreter;
 import com.devcommand.devcommand.user.entity.User;
 import com.fasterxml.jackson.databind.ObjectMapper;

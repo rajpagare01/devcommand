@@ -17,6 +17,8 @@ USER spring:spring
 
 COPY --from=builder /app/target/devcommand-0.0.1-SNAPSHOT.jar app.jar
 
+ENV JAVA_TOOL_OPTIONS="-XX:+UseSerialGC -Xms64m -Xmx180m -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=32m -Xss512k -XX:+ExitOnOutOfMemoryError"
+
 EXPOSE 8080
 
 ENTRYPOINT ["java", "-jar", "app.jar"]

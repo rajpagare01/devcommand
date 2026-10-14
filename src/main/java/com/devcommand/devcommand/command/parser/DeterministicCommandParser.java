@@ -1,4 +1,4 @@
-package com.devcommand.devcommand.integrations.whatsapp.service;
+package com.devcommand.devcommand.command.parser;
 
 import com.devcommand.devcommand.command.Command;
 import com.devcommand.devcommand.command.CommandParameters;
@@ -16,10 +16,10 @@ public class DeterministicCommandParser {
 
     private static final Pattern CREATE_TASK_PATTERN = Pattern.compile("(?i)^add\\s+task:\\s*(.+)$");
 
-    /** Maximum length of any message we attempt to parse. Beyond this we return empty (Gemini path can also reject it). */
-    static final int MAX_MESSAGE_LENGTH = 2000;
+    /** Maximum length of any message we attempt to parse. Beyond this we return empty. */
+    public static final int MAX_MESSAGE_LENGTH = 2000;
     /** Maximum task title length aligned with DB column VARCHAR(255). */
-    static final int MAX_TITLE_LENGTH = 255;
+    public static final int MAX_TITLE_LENGTH = 255;
 
     public Optional<Command> parse(Long userId, String messageBody) {
         if (messageBody == null || messageBody.trim().isEmpty()) {
@@ -37,26 +37,19 @@ public class DeterministicCommandParser {
         if (taskMatcher.matches()) {
             String title = taskMatcher.group(1).trim();
             if (title.length() > MAX_TITLE_LENGTH) {
-                // Title too long: return empty so caller can send a user-facing error
                 return Optional.empty();
             }
             Map<String, Object> params = new HashMap<>();
             params.put("title", title);
-
-            Command command = new Command(
-                    CommandType.CREATE_TASK,
-                    userId,
-                    new CommandParameters(params)
-            );
-            return Optional.of(command);
+            return Optional.of(new Command(CommandType.CREATE_TASK, userId, new CommandParameters(params)));
         }
 
-        if (body.equalsIgnoreCase("list tasks")) {
-            return Optional.of(new Command(
-                    CommandType.READ_PENDING_TASKS,
-                    userId,
-                    new CommandParameters(new HashMap<>())
-            ));
+        if (body.equalsIgnoreCase("tasks today") || body.equalsIgnoreCase("today tasks")) {
+            return Optional.of(new Command(CommandType.READ_TASKS_TODAY, userId, new CommandParameters(Map.of())));
+        }
+
+        if (body.equalsIgnoreCase("pending tasks") || body.equalsIgnoreCase("tasks pending")) {
+            return Optional.of(new Command(CommandType.READ_PENDING_TASKS, userId, new CommandParameters(Map.of())));
         }
 
         return Optional.empty();

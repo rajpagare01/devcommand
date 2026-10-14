@@ -15,11 +15,6 @@ devcommand:
     secret: change-this-test-secret-key-that-is-long-enough-for-hs256
     expiration-ms: 3600000
 
-twilio:
-  account-sid: test-sid
-  auth-token: test-token
-  whatsapp-number: whatsapp:+12345
-  content-sid: test-content-sid
 
 telegram:
   bot-token: test-bot-token

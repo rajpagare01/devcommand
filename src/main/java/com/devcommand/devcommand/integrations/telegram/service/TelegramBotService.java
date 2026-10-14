@@ -9,7 +9,7 @@ import com.devcommand.devcommand.command.identity.ExternalIdentityResolver;
 import com.devcommand.devcommand.integrations.telegram.config.TelegramProperties;
 import com.devcommand.devcommand.integrations.telegram.entity.TelegramProcessedUpdate;
 import com.devcommand.devcommand.integrations.telegram.repository.TelegramProcessedUpdateRepository;
-import com.devcommand.devcommand.integrations.whatsapp.service.DeterministicCommandParser;
+import com.devcommand.devcommand.command.parser.DeterministicCommandParser;
 import com.devcommand.devcommand.integrations.gemini.service.NaturalLanguageInterpreter;
 import com.devcommand.devcommand.conversation.service.ConversationContextService;
 import com.devcommand.devcommand.conversation.model.ContextType;
@@ -77,7 +77,7 @@ public class TelegramBotService {
         this.contextService = contextService;
     }
 
-    @PostConstruct
+    @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
     public void start() {
         if (properties.getBotToken() == null || properties.getBotToken().isBlank() || properties.getAllowedUserId() == null) {
             log.warn("Telegram integration enabled but token or allowed user ID is missing.");
@@ -85,7 +85,7 @@ public class TelegramBotService {
         }
 
         running.set(true);
-        executor = Executors.newSingleThreadExecutor();
+        executor = Executors.newSingleThreadExecutor(Thread.ofPlatform().name("telegram-poller-", 1).factory());
         executor.submit(this::pollUpdates);
         log.info("Telegram Bot polling started.");
     }

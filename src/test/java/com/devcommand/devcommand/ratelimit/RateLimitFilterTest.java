@@ -141,16 +141,6 @@ class RateLimitFilterTest {
         verify(rateLimitService).isAllowed(contains("telegram:bootstrap"), eq(5), eq(60));
     }
 
-    @Test
-    void whatsappWebhookEndpoint_usesCorrectLimit() throws Exception {
-        when(rateLimitService.isAllowed(anyString(), eq(30), eq(60))).thenReturn(true);
-
-        MockHttpServletRequest req = postRequest("/api/integrations/whatsapp/webhook");
-        filter.doFilter(req, new MockHttpServletResponse(), new MockFilterChain());
-
-        verify(rateLimitService).isAllowed(contains("whatsapp:webhook"), eq(30), eq(60));
-    }
-
     // ------------------------------------------------------------------ Independent users/IPs
 
     @Test

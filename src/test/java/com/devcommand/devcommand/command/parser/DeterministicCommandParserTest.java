@@ -1,4 +1,4 @@
-package com.devcommand.devcommand.integrations.whatsapp.service;
+package com.devcommand.devcommand.command.parser;
 
 import com.devcommand.devcommand.command.Command;
 import com.devcommand.devcommand.command.CommandType;
@@ -15,33 +15,17 @@ class DeterministicCommandParserTest {
 
     @Test
     void parse_listTasks_exact() {
-        Optional<Command> cmd = parser.parse(1L, "list tasks");
+        Optional<Command> cmd = parser.parse(1L, "tasks today");
         assertTrue(cmd.isPresent());
-        assertEquals(CommandType.READ_PENDING_TASKS, cmd.get().type());
+        assertEquals(CommandType.READ_TASKS_TODAY, cmd.get().type());
         assertEquals(1L, cmd.get().userId());
     }
 
     @Test
-    void parse_listTasks_caseInsensitive() {
-        Optional<Command> cmd = parser.parse(1L, "LiSt TAsKs");
+    void parse_pendingTasks_caseInsensitive() {
+        Optional<Command> cmd = parser.parse(1L, "pEnDiNg tAsKs");
         assertTrue(cmd.isPresent());
         assertEquals(CommandType.READ_PENDING_TASKS, cmd.get().type());
-    }
-
-    @Test
-    void parse_listTasks_leadingTrailingWhitespace() {
-        Optional<Command> cmd = parser.parse(1L, "  list tasks  \n");
-        assertTrue(cmd.isPresent());
-        assertEquals(CommandType.READ_PENDING_TASKS, cmd.get().type());
-    }
-
-    @Test
-    void parse_listTasks_malformed_returnsEmpty() {
-        Optional<Command> cmd = parser.parse(1L, "list tasks please");
-        assertTrue(cmd.isEmpty());
-
-        cmd = parser.parse(1L, "list my tasks");
-        assertTrue(cmd.isEmpty());
     }
 
     @Test
