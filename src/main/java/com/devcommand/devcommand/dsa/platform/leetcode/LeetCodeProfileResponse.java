@@ -22,6 +22,7 @@ public class LeetCodeProfileResponse {
         private String username;
         private Profile profile;
         private SubmitStats submitStats;
+        private SubmitStats submitStatsGlobal;
     }
 
     @Data

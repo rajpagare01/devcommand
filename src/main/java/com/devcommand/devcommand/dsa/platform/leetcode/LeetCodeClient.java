@@ -43,6 +43,12 @@ public class LeetCodeClient {
                     count
                   }
                 }
+                submitStatsGlobal {
+                  acSubmissionNum {
+                    difficulty
+                    count
+                  }
+                }
               }
             }
             """;

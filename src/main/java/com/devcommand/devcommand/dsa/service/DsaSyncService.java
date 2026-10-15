@@ -29,6 +29,7 @@ public class DsaSyncService {
     private final List<DsaPlatformAdapter> adapters;
     private final DevCommandMetrics metrics;
 
+    @Transactional
     public void syncLeetCodeAccount(Long userId) {
         log.info("LeetCode sync started for user {}", userId);
         metrics.recordDsaSyncAttempt(DsaPlatform.LEETCODE.name());
@@ -60,7 +61,7 @@ public class DsaSyncService {
     }
     
     @Transactional
-    protected void saveSuccess(ExternalDsaAccount account, PlatformProfile profile) {
+    public void saveSuccess(ExternalDsaAccount account, PlatformProfile profile) {
         account.setProfileUrl(profile.getProfileUrl());
         account.setStatus(ExternalDsaAccountStatus.CONNECTED);
         account.setLastSyncedAt(Instant.now());
@@ -80,7 +81,7 @@ public class DsaSyncService {
     }
     
     @Transactional
-    protected void saveFailure(ExternalDsaAccount account) {
+    public void saveFailure(ExternalDsaAccount account) {
         account.setStatus(ExternalDsaAccountStatus.SYNC_FAILED);
         accountRepository.save(account);
     }

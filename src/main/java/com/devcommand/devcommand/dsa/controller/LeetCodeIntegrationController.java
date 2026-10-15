@@ -60,15 +60,26 @@ public class LeetCodeIntegrationController {
     
     private LeetCodeIntegrationResponse mapToResponse(ExternalDsaAccount account) {
         LeetCodeStatsResponse statsResponse = null;
+        Integer totalSolved = null;
+        Integer easy = null;
+        Integer medium = null;
+        Integer hard = null;
+        Integer ranking = null;
         
         LeetCodeStats stats = statsRepository.findByExternalDsaAccountId(account.getId()).orElse(null);
         if (stats != null) {
+            totalSolved = stats.getTotalSolved();
+            easy = stats.getEasySolved();
+            medium = stats.getMediumSolved();
+            hard = stats.getHardSolved();
+            ranking = stats.getRanking();
+
             statsResponse = LeetCodeStatsResponse.builder()
-                    .totalSolved(stats.getTotalSolved())
-                    .easySolved(stats.getEasySolved())
-                    .mediumSolved(stats.getMediumSolved())
-                    .hardSolved(stats.getHardSolved())
-                    .ranking(stats.getRanking())
+                    .totalSolved(totalSolved)
+                    .easySolved(easy)
+                    .mediumSolved(medium)
+                    .hardSolved(hard)
+                    .ranking(ranking)
                     .lastUpdatedAt(stats.getLastUpdatedAt())
                     .build();
         }
@@ -79,6 +90,14 @@ public class LeetCodeIntegrationController {
                 .profileUrl(account.getProfileUrl())
                 .status(account.getStatus())
                 .lastSyncedAt(account.getLastSyncedAt())
+                .totalSolved(totalSolved)
+                .easy(easy)
+                .medium(medium)
+                .hard(hard)
+                .easySolved(easy)
+                .mediumSolved(medium)
+                .hardSolved(hard)
+                .ranking(ranking)
                 .stats(statsResponse)
                 .build();
     }

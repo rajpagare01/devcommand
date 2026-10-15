@@ -22,8 +22,9 @@ public class LeetCodeProfileMapper {
             profile.setRanking(user.getProfile().getRanking());
         }
         
-        if (user.getSubmitStats() != null && user.getSubmitStats().getAcSubmissionNum() != null) {
-            List<LeetCodeProfileResponse.SubmissionNode> stats = user.getSubmitStats().getAcSubmissionNum();
+        LeetCodeProfileResponse.SubmitStats submitStats = user.getSubmitStats() != null ? user.getSubmitStats() : user.getSubmitStatsGlobal();
+        if (submitStats != null && submitStats.getAcSubmissionNum() != null) {
+            List<LeetCodeProfileResponse.SubmissionNode> stats = submitStats.getAcSubmissionNum();
             for (LeetCodeProfileResponse.SubmissionNode stat : stats) {
                 if (stat.getDifficulty() == null) continue;
                 
