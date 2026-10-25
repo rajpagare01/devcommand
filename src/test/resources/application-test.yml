@@ -1,6 +1,20 @@
 spring:
+  ai:
+    openai:
+      api-key: dummy-openai-key
+    google:
+      genai:
+        api-key: dummy-gemini-key
+    model:
+      chat: none
+      audio:
+        speech: none
+        transcription: none
+      embedding: none
+      image: none
+      moderation: none
   datasource:
-    url: jdbc:postgresql://127.0.0.1:5432/devcommand_test
+    url: jdbc:postgresql://localhost:5432/devcommand_test
     username: postgres
     password: yzgD7jMECT4txBJa09fHpFwi
     driver-class-name: org.postgresql.Driver

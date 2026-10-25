@@ -5,11 +5,17 @@ import com.devcommand.devcommand.integrations.gemini.service.InterpretationStatu
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.retry.NonTransientAiException;
+import org.springframework.ai.retry.TransientAiException;
+import org.springframework.web.client.ResourceAccessException;
 
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.net.http.HttpTimeoutException;
+import java.net.SocketTimeoutException;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -18,214 +24,105 @@ import static org.mockito.Mockito.*;
 class GeminiIntentProviderTest {
 
     private GeminiProperties properties;
-    private HttpClient httpClient;
+    private ChatModel chatModel;
     private ObjectMapper objectMapper;
     private GeminiIntentProvider provider;
 
-    private static final String SUCCESS_RESPONSE = """
-            {
-              "candidates": [
-                {
-                  "content": {
-                    "parts": [
-                      {
-                        "text": "{\\"action\\":\\"CREATE_TASK\\",\\"parameters\\":{\\"title\\":\\"Test task\\"},\\"isSupported\\":true}"
-                      }
-                    ]
-                  }
-                }
-              ]
-            }
+    private static final String SUCCESS_JSON = """
+            {"action":"CREATE_TASK","parameters":{"title":"Test task"},"isSupported":true}
             """;
 
     @BeforeEach
     void setUp() {
         properties = new GeminiProperties();
         properties.setApiKey("test-key");
-        properties.setMaxRetries(2); // 3 attempts max
-        httpClient = mock(HttpClient.class);
+        properties.setModel("gemini-1.5-flash");
+        chatModel = mock(ChatModel.class);
         objectMapper = new ObjectMapper();
-        provider = new GeminiIntentProvider(properties, httpClient, objectMapper);
+        provider = new GeminiIntentProvider(properties, chatModel, objectMapper);
+    }
+
+    private ChatResponse createChatResponse(String content) {
+        return new ChatResponse(List.of(new Generation(new AssistantMessage(content))));
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void interpret_returnsReady_whenValidAction_firstAttemptSuccess() throws Exception {
-        HttpResponse<String> mockResponse = mock(HttpResponse.class);
-        when(mockResponse.statusCode()).thenReturn(200);
-        when(mockResponse.body()).thenReturn(SUCCESS_RESPONSE);
-        when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(mockResponse);
+    void interpret_returnsReady_whenValidAction() {
+        when(chatModel.call(any(Prompt.class))).thenReturn(createChatResponse(SUCCESS_JSON));
 
         ProviderIntentResult result = provider.interpret("create a task", null);
 
         assertEquals(InterpretationStatus.READY, result.status());
-        verify(httpClient, times(1)).send(any(), any());
+        assertNotNull(result.intent());
+        assertEquals("CREATE_TASK", result.intent().action());
+        assertEquals("Test task", result.intent().parameters().get("title"));
+        verify(chatModel, times(1)).call(any(Prompt.class));
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void interpret_retriesOn503_thenSuccess() throws Exception {
-        HttpResponse<String> mock503 = mock(HttpResponse.class);
-        when(mock503.statusCode()).thenReturn(503);
-        
-        HttpResponse<String> mock200 = mock(HttpResponse.class);
-        when(mock200.statusCode()).thenReturn(200);
-        when(mock200.body()).thenReturn(SUCCESS_RESPONSE);
-        
-        when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
-                .thenReturn(mock503)
-                .thenReturn(mock200);
-
-        ProviderIntentResult result = provider.interpret("create a task", null);
-
-        assertEquals(InterpretationStatus.READY, result.status());
-        verify(httpClient, times(2)).send(any(), any());
-    }
-
-    @Test
-    @SuppressWarnings("unchecked")
-    void interpret_retriesOn503_then503_thenSuccess() throws Exception {
-        HttpResponse<String> mock503 = mock(HttpResponse.class);
-        when(mock503.statusCode()).thenReturn(503);
-        
-        HttpResponse<String> mock200 = mock(HttpResponse.class);
-        when(mock200.statusCode()).thenReturn(200);
-        when(mock200.body()).thenReturn(SUCCESS_RESPONSE);
-        
-        when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
-                .thenReturn(mock503)
-                .thenReturn(mock503)
-                .thenReturn(mock200);
-
-        ProviderIntentResult result = provider.interpret("create a task", null);
-
-        assertEquals(InterpretationStatus.READY, result.status());
-        verify(httpClient, times(3)).send(any(), any());
-    }
-
-    @Test
-    @SuppressWarnings("unchecked")
-    void interpret_failsAfterMaxRetriesOn503() throws Exception {
-        HttpResponse<String> mock503 = mock(HttpResponse.class);
-        when(mock503.statusCode()).thenReturn(503);
-        
-        when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
-                .thenReturn(mock503);
+    void interpret_throwsTransientAiProviderException_onTransientAiException() {
+        when(chatModel.call(any(Prompt.class))).thenThrow(new TransientAiException("rate limit or temporary outage"));
 
         assertThrows(TransientAiProviderException.class, () -> provider.interpret("create a task", null));
-        verify(httpClient, times(3)).send(any(), any());
+        verify(chatModel, times(1)).call(any(Prompt.class));
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void interpret_retriesOn429_thenSuccess() throws Exception {
-        HttpResponse<String> mock429 = mock(HttpResponse.class);
-        when(mock429.statusCode()).thenReturn(429);
-        
-        HttpResponse<String> mock200 = mock(HttpResponse.class);
-        when(mock200.statusCode()).thenReturn(200);
-        when(mock200.body()).thenReturn(SUCCESS_RESPONSE);
-        
-        when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
-                .thenReturn(mock429)
-                .thenReturn(mock200);
-
-        ProviderIntentResult result = provider.interpret("create a task", null);
-
-        assertEquals(InterpretationStatus.READY, result.status());
-        verify(httpClient, times(2)).send(any(), any());
-    }
-
-    @Test
-    @SuppressWarnings("unchecked")
-    void interpret_retriesOnTimeout_thenSuccess() throws Exception {
-        HttpResponse<String> mock200 = mock(HttpResponse.class);
-        when(mock200.statusCode()).thenReturn(200);
-        when(mock200.body()).thenReturn(SUCCESS_RESPONSE);
-        
-        when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
-                .thenThrow(new HttpTimeoutException("timeout"))
-                .thenReturn(mock200);
-
-        ProviderIntentResult result = provider.interpret("create a task", null);
-
-        assertEquals(InterpretationStatus.READY, result.status());
-        verify(httpClient, times(2)).send(any(), any());
-    }
-
-    @Test
-    @SuppressWarnings("unchecked")
-    void interpret_failsAfterMaxRetriesOnTimeout() throws Exception {
-        when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
-                .thenThrow(new HttpTimeoutException("timeout"));
+    void interpret_throwsTransientAiProviderException_onTimeout() {
+        when(chatModel.call(any(Prompt.class)))
+                .thenThrow(new ResourceAccessException("Read timed out", new SocketTimeoutException("timeout")));
 
         assertThrows(TransientAiProviderException.class, () -> provider.interpret("create a task", null));
-        verify(httpClient, times(3)).send(any(), any());
+        verify(chatModel, times(1)).call(any(Prompt.class));
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void interpret_doesNotRetryOn400() throws Exception {
-        HttpResponse<String> mock400 = mock(HttpResponse.class);
-        when(mock400.statusCode()).thenReturn(400);
-        
-        when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
-                .thenReturn(mock400);
+    void interpret_throwsAiProviderException_onNonTransientAiException() {
+        when(chatModel.call(any(Prompt.class))).thenThrow(new NonTransientAiException("bad request 400"));
 
         assertThrows(AiProviderException.class, () -> provider.interpret("create a task", null));
-        verify(httpClient, times(1)).send(any(), any());
+        verify(chatModel, times(1)).call(any(Prompt.class));
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void interpret_doesNotRetryOn401() throws Exception {
-        HttpResponse<String> mock401 = mock(HttpResponse.class);
-        when(mock401.statusCode()).thenReturn(401);
-        
-        when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
-                .thenReturn(mock401);
+    void interpret_throwsAiProviderException_onMalformedResponse() {
+        when(chatModel.call(any(Prompt.class))).thenReturn(createChatResponse("invalid json"));
 
         assertThrows(AiProviderException.class, () -> provider.interpret("create a task", null));
-        verify(httpClient, times(1)).send(any(), any());
+        verify(chatModel, times(1)).call(any(Prompt.class));
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void interpret_doesNotRetryOn403() throws Exception {
-        HttpResponse<String> mock403 = mock(HttpResponse.class);
-        when(mock403.statusCode()).thenReturn(403);
-        
-        when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
-                .thenReturn(mock403);
+    void interpret_returnsUnsupported_whenIsSupportedFalse() {
+        String unsupportedJson = "{\"action\":null,\"parameters\":{},\"isSupported\":false}";
+        when(chatModel.call(any(Prompt.class))).thenReturn(createChatResponse(unsupportedJson));
 
-        assertThrows(AiProviderException.class, () -> provider.interpret("create a task", null));
-        verify(httpClient, times(1)).send(any(), any());
+        ProviderIntentResult result = provider.interpret("random talk", null);
+
+        assertEquals(InterpretationStatus.UNSUPPORTED, result.status());
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void interpret_doesNotRetryOn404() throws Exception {
-        HttpResponse<String> mock404 = mock(HttpResponse.class);
-        when(mock404.statusCode()).thenReturn(404);
-        
-        when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
-                .thenReturn(mock404);
+    void interpret_returnsClarification_whenClarificationQuestionProvided() {
+        String clarificationJson = """
+                {"action":"COMPLETE_TASK","parameters":{},"clarificationQuestion":"Which task would you like to complete?","isSupported":true}
+                """;
+        when(chatModel.call(any(Prompt.class))).thenReturn(createChatResponse(clarificationJson));
 
-        assertThrows(AiProviderException.class, () -> provider.interpret("create a task", null));
-        verify(httpClient, times(1)).send(any(), any());
+        ProviderIntentResult result = provider.interpret("mark task done", null);
+
+        assertEquals(InterpretationStatus.CLARIFICATION_REQUIRED, result.status());
+        assertEquals("Which task would you like to complete?", result.message());
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void interpret_doesNotRetryOnMalformedResponse() throws Exception {
-        HttpResponse<String> mock200 = mock(HttpResponse.class);
-        when(mock200.statusCode()).thenReturn(200);
-        when(mock200.body()).thenReturn("invalid json");
-        
-        when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
-                .thenReturn(mock200);
+    void interpret_cleansMarkdownJson() {
+        String markdownJson = "```json\n" + SUCCESS_JSON + "\n```";
+        when(chatModel.call(any(Prompt.class))).thenReturn(createChatResponse(markdownJson));
 
-        assertThrows(AiProviderException.class, () -> provider.interpret("create a task", null));
-        verify(httpClient, times(1)).send(any(), any());
+        ProviderIntentResult result = provider.interpret("create a task", null);
+
+        assertEquals(InterpretationStatus.READY, result.status());
+        assertEquals("CREATE_TASK", result.intent().action());
     }
 }

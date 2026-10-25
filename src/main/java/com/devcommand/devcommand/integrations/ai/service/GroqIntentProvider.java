@@ -2,17 +2,21 @@ package com.devcommand.devcommand.integrations.ai.service;
 
 import com.devcommand.devcommand.integrations.ai.config.GroqProperties;
 import com.devcommand.devcommand.integrations.gemini.service.IntentDto;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.ai.chat.messages.SystemMessage;
+import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.ai.openai.api.ResponseFormat;
+import org.springframework.ai.retry.TransientAiException;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
+import java.util.List;
 
 @Service
 public class GroqIntentProvider implements AiIntentProvider {
@@ -20,7 +24,7 @@ public class GroqIntentProvider implements AiIntentProvider {
     private static final Logger log = LoggerFactory.getLogger(GroqIntentProvider.class);
 
     private final GroqProperties properties;
-    private final HttpClient httpClient;
+    private final ChatModel chatModel;
     private final ObjectMapper objectMapper;
 
     private static final String SYSTEM_PROMPT = """
@@ -58,9 +62,12 @@ public class GroqIntentProvider implements AiIntentProvider {
             }
             """;
 
-    public GroqIntentProvider(GroqProperties properties, HttpClient httpClient, ObjectMapper objectMapper) {
+    public GroqIntentProvider(
+            GroqProperties properties,
+            @Qualifier("groqChatModel") ChatModel chatModel,
+            ObjectMapper objectMapper) {
         this.properties = properties;
-        this.httpClient = httpClient;
+        this.chatModel = chatModel;
         this.objectMapper = objectMapper;
     }
 
@@ -90,68 +97,36 @@ public class GroqIntentProvider implements AiIntentProvider {
         }
 
         try {
-            String payload = buildRequestPayload(naturalText, conversationContext);
-            
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(properties.getApiUrl()))
-                    .timeout(Duration.ofSeconds(properties.getTimeoutSeconds()))
-                    .header("Content-Type", "application/json")
-                    .header("Authorization", "Bearer " + properties.getApiKey())
-                    .POST(HttpRequest.BodyPublishers.ofString(payload))
-                    .build();
-
-            int maxAttempts = properties.getMaxRetries() + 1;
-            HttpResponse<String> response = null;
-
-            for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-                try {
-                    response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-                    if (response.statusCode() == 200) {
-                        break;
-                    } else if (response.statusCode() == 503 || response.statusCode() == 429 || response.statusCode() >= 500) {
-                        log.warn("Groq API transient failure. Status: {} (Attempt {}/{})", response.statusCode(), attempt, maxAttempts);
-                        if (attempt == maxAttempts) {
-                            throw new TransientAiProviderException("Groq API returned status " + response.statusCode());
-                        }
-                        Thread.sleep((long) Math.pow(2, attempt) * 1000);
-                    } else {
-                        log.error("Groq API error. Status: {}", response.statusCode());
-                        throw new AiProviderException("Groq API returned status " + response.statusCode());
-                    }
-                } catch (java.net.http.HttpTimeoutException e) {
-                    log.warn("Groq API timeout. (Attempt {}/{})", attempt, maxAttempts);
-                    if (attempt == maxAttempts) {
-                        throw new TransientAiProviderException("Groq API timeout", e);
-                    }
-                    Thread.sleep((long) Math.pow(2, attempt) * 1000);
-                } catch (java.io.IOException e) {
-                    log.warn("Groq API network error: {} (Attempt {}/{})", e.getMessage(), attempt, maxAttempts);
-                    if (attempt == maxAttempts) {
-                        throw new TransientAiProviderException("Groq API network error", e);
-                    }
-                    Thread.sleep((long) Math.pow(2, attempt) * 1000);
-                }
+            String promptText = SYSTEM_PROMPT;
+            if (conversationContext != null && !conversationContext.isBlank()) {
+                promptText += "\n\nCurrent Context:\n" + conversationContext;
+                promptText += "\n\nUse the context to fill in missing parameters if the user refers to it implicitly (e.g. 'mark it done', 'update to 50%').";
             }
 
-            JsonNode root = objectMapper.readTree(response.body());
-            JsonNode choices = root.path("choices");
-            if (choices.isMissingNode() || choices.isEmpty()) {
-                log.warn("Groq returned no choices");
+            OpenAiChatOptions options = OpenAiChatOptions.builder()
+                    .model(properties.getModel())
+                    .responseFormat(ResponseFormat.builder().type(ResponseFormat.Type.JSON_OBJECT).build())
+                    .build();
+
+            Prompt prompt = new Prompt(List.of(new SystemMessage(promptText), new UserMessage(naturalText)), options);
+
+            log.info("Requesting Groq intent interpretation for model: {}", properties.getModel());
+
+            ChatResponse response = chatModel.call(prompt);
+
+            if (response == null || response.getResults() == null || response.getResults().isEmpty()
+                    || response.getResult() == null || response.getResult().getOutput() == null) {
+                log.warn("Groq returned empty response");
                 return ProviderIntentResult.invalid();
             }
 
-            String textContent = choices.get(0).path("message").path("content").asText();
-            
-            // Clean markdown JSON formatting if present
-            textContent = textContent.trim();
-            if (textContent.startsWith("```json")) {
-                textContent = textContent.substring(7);
+            String textContent = response.getResult().getOutput().getText();
+            if (textContent == null || textContent.isBlank()) {
+                log.warn("Groq returned empty text content");
+                return ProviderIntentResult.invalid();
             }
-            if (textContent.endsWith("```")) {
-                textContent = textContent.substring(0, textContent.length() - 3);
-            }
-            textContent = textContent.trim();
+
+            textContent = cleanJson(textContent);
 
             IntentDto intent = objectMapper.readValue(textContent, IntentDto.class);
 
@@ -172,39 +147,46 @@ public class GroqIntentProvider implements AiIntentProvider {
 
             return ProviderIntentResult.ready(intent);
 
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new TransientAiProviderException("Groq API request interrupted", e);
         } catch (AiProviderException e) {
             throw e;
         } catch (Exception e) {
+            if (isTransient(e)) {
+                throw new TransientAiProviderException("Groq transient failure: " + e.getMessage(), e);
+            }
             throw new AiProviderException("Failed to interpret natural language text", e);
         }
     }
 
-    private String buildRequestPayload(String naturalText, String conversationContext) throws Exception {
-        var root = objectMapper.createObjectNode();
-        root.put("model", properties.getModel());
-        
-        var responseFormat = root.putObject("response_format");
-        responseFormat.put("type", "json_object");
-        
-        var messages = root.putArray("messages");
-        
-        String prompt = SYSTEM_PROMPT;
-        if (conversationContext != null && !conversationContext.isBlank()) {
-            prompt += "\n\nCurrent Context:\n" + conversationContext;
-            prompt += "\n\nUse the context to fill in missing parameters if the user refers to it implicitly (e.g. 'mark it done', 'update to 50%').";
+    private String cleanJson(String textContent) {
+        String trimmed = textContent.trim();
+        if (trimmed.startsWith("```json")) {
+            trimmed = trimmed.substring(7);
+        } else if (trimmed.startsWith("```")) {
+            trimmed = trimmed.substring(3);
         }
-        
-        var sysMessage = messages.addObject();
-        sysMessage.put("role", "system");
-        sysMessage.put("content", prompt);
-        
-        var userMessage = messages.addObject();
-        userMessage.put("role", "user");
-        userMessage.put("content", naturalText);
-        
-        return objectMapper.writeValueAsString(root);
+        if (trimmed.endsWith("```")) {
+            trimmed = trimmed.substring(0, trimmed.length() - 3);
+        }
+        return trimmed.trim();
+    }
+
+    private boolean isTransient(Throwable t) {
+        if (t instanceof TransientAiException) {
+            return true;
+        }
+        if (t instanceof org.springframework.web.client.ResourceAccessException) {
+            return true;
+        }
+        if (t instanceof java.io.IOException || t instanceof java.net.SocketTimeoutException) {
+            return true;
+        }
+        if (t instanceof org.springframework.web.client.HttpStatusCodeException statusEx) {
+            return statusEx.getStatusCode().is5xxServerError() || statusEx.getStatusCode().value() == 429;
+        }
+        Throwable cause = t.getCause();
+        if (cause != null && cause != t) {
+            return isTransient(cause);
+        }
+        return false;
     }
 }

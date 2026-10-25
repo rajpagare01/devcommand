@@ -13,7 +13,7 @@ public abstract class AbstractIntegrationTest {
 
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", () -> "jdbc:postgresql://127.0.0.1:5432/devcommand_test");
+        registry.add("spring.datasource.url", () -> "jdbc:postgresql://localhost:5432/devcommand_test");
         registry.add("spring.datasource.username", () -> "postgres");
         registry.add("spring.datasource.password", () -> "yzgD7jMECT4txBJa09fHpFwi");
         registry.add("spring.datasource.driver-class-name", () -> "org.postgresql.Driver");

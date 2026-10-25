@@ -1,19 +1,21 @@
 package com.devcommand.devcommand.integrations.ai.service;
 
 import com.devcommand.devcommand.integrations.gemini.config.GeminiProperties;
-
 import com.devcommand.devcommand.integrations.gemini.service.IntentDto;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.ai.chat.messages.SystemMessage;
+import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.google.genai.GoogleGenAiChatOptions;
+import org.springframework.ai.retry.TransientAiException;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
+import java.util.List;
 
 @Service
 public class GeminiIntentProvider implements AiIntentProvider {
@@ -21,7 +23,7 @@ public class GeminiIntentProvider implements AiIntentProvider {
     private static final Logger log = LoggerFactory.getLogger(GeminiIntentProvider.class);
 
     private final GeminiProperties properties;
-    private final HttpClient httpClient;
+    private final ChatModel chatModel;
     private final ObjectMapper objectMapper;
 
     private static final String SYSTEM_PROMPT = """
@@ -49,11 +51,22 @@ public class GeminiIntentProvider implements AiIntentProvider {
             If the user request is completely unrelated to DevCommand, set isSupported to false.
             If the user is ambiguous or missing required fields, set clarificationQuestion with a question.
             Do not assume or hallucinate fields.
+
+            You must respond ONLY with a valid JSON object matching this schema:
+            {
+              "action": "STRING (or null)",
+              "parameters": { ... },
+              "clarificationQuestion": "STRING (or null)",
+              "isSupported": BOOLEAN
+            }
             """;
 
-    public GeminiIntentProvider(GeminiProperties properties, HttpClient httpClient, ObjectMapper objectMapper) {
+    public GeminiIntentProvider(
+            GeminiProperties properties,
+            @Qualifier("geminiChatModel") ChatModel chatModel,
+            ObjectMapper objectMapper) {
         this.properties = properties;
-        this.httpClient = httpClient;
+        this.chatModel = chatModel;
         this.objectMapper = objectMapper;
     }
 
@@ -80,60 +93,37 @@ public class GeminiIntentProvider implements AiIntentProvider {
         }
 
         try {
-            String payload = buildRequestPayload(naturalText, conversationContext);
-            String url = properties.getApiUrl() + properties.getModel() + ":generateContent?key=" + properties.getApiKey();
-            String safeUrl = properties.getApiUrl() + properties.getModel() + ":generateContent?key=***";
-            log.info("Requesting Gemini API URL: {}", safeUrl);
-
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
-                    .timeout(Duration.ofSeconds(properties.getTimeoutSeconds()))
-                    .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(payload))
-                    .build();
-
-            int maxAttempts = properties.getMaxRetries() + 1;
-            HttpResponse<String> response = null;
-
-            for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-                try {
-                    response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-                    if (response.statusCode() == 200) {
-                        break;
-                    } else if (response.statusCode() == 503 || response.statusCode() == 429 || response.statusCode() >= 500) {
-                        log.warn("Gemini API transient failure. Status: {} (Attempt {}/{})", response.statusCode(), attempt, maxAttempts);
-                        if (attempt == maxAttempts) {
-                            throw new TransientAiProviderException("Gemini API returned status " + response.statusCode());
-                        }
-                        Thread.sleep((long) Math.pow(2, attempt) * 1000);
-                    } else {
-                        log.error("Gemini API error. Status: {}", response.statusCode());
-                        throw new AiProviderException("Gemini API returned status " + response.statusCode());
-                    }
-                } catch (java.net.http.HttpTimeoutException e) {
-                    log.warn("Gemini API timeout. (Attempt {}/{})", attempt, maxAttempts);
-                    if (attempt == maxAttempts) {
-                        throw new TransientAiProviderException("Gemini API timeout", e);
-                    }
-                    Thread.sleep((long) Math.pow(2, attempt) * 1000);
-                } catch (java.io.IOException e) {
-                    log.warn("Gemini API network error: {} (Attempt {}/{})", e.getMessage(), attempt, maxAttempts);
-                    if (attempt == maxAttempts) {
-                        throw new TransientAiProviderException("Gemini API network error", e);
-                    }
-                    Thread.sleep((long) Math.pow(2, attempt) * 1000);
-                }
+            String promptText = SYSTEM_PROMPT;
+            if (conversationContext != null && !conversationContext.isBlank()) {
+                promptText += "\n\nCurrent Context:\n" + conversationContext;
+                promptText += "\n\nUse the context to fill in missing parameters if the user refers to it implicitly (e.g. 'mark it done', 'update to 50%').";
             }
 
-            JsonNode root = objectMapper.readTree(response.body());
-            JsonNode candidates = root.path("candidates");
-            if (candidates.isMissingNode() || candidates.isEmpty()) {
-                log.warn("Gemini returned no candidates");
+            GoogleGenAiChatOptions options = GoogleGenAiChatOptions.builder()
+                    .model(properties.getModel())
+                    .responseMimeType("application/json")
+                    .build();
+
+            Prompt prompt = new Prompt(List.of(new SystemMessage(promptText), new UserMessage(naturalText)), options);
+
+            log.info("Requesting Gemini intent interpretation for model: {}", properties.getModel());
+
+            ChatResponse response = chatModel.call(prompt);
+
+            if (response == null || response.getResults() == null || response.getResults().isEmpty()
+                    || response.getResult() == null || response.getResult().getOutput() == null) {
+                log.warn("Gemini returned empty response");
                 return ProviderIntentResult.invalid();
             }
 
-            String textContent = candidates.get(0).path("content").path("parts").get(0).path("text").asText();
+            String textContent = response.getResult().getOutput().getText();
+            if (textContent == null || textContent.isBlank()) {
+                log.warn("Gemini returned empty text content");
+                return ProviderIntentResult.invalid();
+            }
+
+            textContent = cleanJson(textContent);
+
             IntentDto intent = objectMapper.readValue(textContent, IntentDto.class);
 
             if (intent.isSupported() != null && !intent.isSupported()) {
@@ -153,50 +143,46 @@ public class GeminiIntentProvider implements AiIntentProvider {
 
             return ProviderIntentResult.ready(intent);
 
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new TransientAiProviderException("Gemini API request interrupted", e);
         } catch (AiProviderException e) {
             throw e;
         } catch (Exception e) {
+            if (isTransient(e)) {
+                throw new TransientAiProviderException("Gemini transient failure: " + e.getMessage(), e);
+            }
             throw new AiProviderException("Failed to interpret natural language text", e);
         }
     }
 
-    private String buildRequestPayload(String naturalText, String conversationContext) throws Exception {
-        var root = objectMapper.createObjectNode();
-        
-        var systemInstruction = root.putObject("systemInstruction");
-        var sysParts = systemInstruction.putArray("parts");
-        
-        String prompt = SYSTEM_PROMPT;
-        if (conversationContext != null && !conversationContext.isBlank()) {
-            prompt += "\n\nCurrent Context:\n" + conversationContext;
-            prompt += "\n\nUse the context to fill in missing parameters if the user refers to it implicitly (e.g. 'mark it done', 'update to 50%').";
+    private String cleanJson(String textContent) {
+        String trimmed = textContent.trim();
+        if (trimmed.startsWith("```json")) {
+            trimmed = trimmed.substring(7);
+        } else if (trimmed.startsWith("```")) {
+            trimmed = trimmed.substring(3);
         }
-        
-        sysParts.addObject().put("text", prompt);
-        
-        var contents = root.putArray("contents");
-        var content = contents.addObject();
-        var parts = content.putArray("parts");
-        parts.addObject().put("text", naturalText);
-        
-        var config = root.putObject("generationConfig");
-        config.put("responseMimeType", "application/json");
-        
-        var schema = config.putObject("responseSchema");
-        schema.put("type", "OBJECT");
-        
-        var props = schema.putObject("properties");
-        props.putObject("action").put("type", "STRING");
-        props.putObject("parameters").put("type", "OBJECT").put("description", "Extracted parameters");
-        props.putObject("clarificationQuestion").put("type", "STRING");
-        props.putObject("isSupported").put("type", "BOOLEAN");
-        
-        var required = schema.putArray("required");
-        required.add("isSupported");
-        
-        return objectMapper.writeValueAsString(root);
+        if (trimmed.endsWith("```")) {
+            trimmed = trimmed.substring(0, trimmed.length() - 3);
+        }
+        return trimmed.trim();
+    }
+
+    private boolean isTransient(Throwable t) {
+        if (t instanceof TransientAiException) {
+            return true;
+        }
+        if (t instanceof org.springframework.web.client.ResourceAccessException) {
+            return true;
+        }
+        if (t instanceof java.io.IOException || t instanceof java.net.SocketTimeoutException) {
+            return true;
+        }
+        if (t instanceof org.springframework.web.client.HttpStatusCodeException statusEx) {
+            return statusEx.getStatusCode().is5xxServerError() || statusEx.getStatusCode().value() == 429;
+        }
+        Throwable cause = t.getCause();
+        if (cause != null && cause != t) {
+            return isTransient(cause);
+        }
+        return false;
     }
 }

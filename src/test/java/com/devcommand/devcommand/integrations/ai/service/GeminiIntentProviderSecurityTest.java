@@ -5,26 +5,29 @@ import com.devcommand.devcommand.integrations.gemini.service.InterpretationStatu
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.prompt.Prompt;
 
-import java.net.http.HttpClient;
-import java.net.http.HttpResponse;
+import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 class GeminiIntentProviderSecurityTest {
 
     private GeminiProperties properties;
-    private HttpClient httpClient;
+    private ChatModel chatModel;
     private ObjectMapper objectMapper;
     private GeminiIntentProvider provider;
 
     @BeforeEach
     void setUp() {
         properties = mock(GeminiProperties.class);
-        httpClient = mock(HttpClient.class);
+        chatModel = mock(ChatModel.class);
         objectMapper = new ObjectMapper();
-        provider = new GeminiIntentProvider(properties, httpClient, objectMapper);
+        provider = new GeminiIntentProvider(properties, chatModel, objectMapper);
     }
 
     @Test
@@ -46,7 +49,7 @@ class GeminiIntentProviderSecurityTest {
         when(properties.getApiKey()).thenReturn("valid-key");
         ProviderIntentResult result = provider.interpret(null, null);
         assertEquals(InterpretationStatus.INVALID_MODEL_RESPONSE, result.status());
-        verifyNoInteractions(httpClient);
+        verifyNoInteractions(chatModel);
     }
 
     @Test
@@ -54,7 +57,7 @@ class GeminiIntentProviderSecurityTest {
         when(properties.getApiKey()).thenReturn("valid-key");
         ProviderIntentResult result = provider.interpret("   ", null);
         assertEquals(InterpretationStatus.INVALID_MODEL_RESPONSE, result.status());
-        verifyNoInteractions(httpClient);
+        verifyNoInteractions(chatModel);
     }
 
     @Test
@@ -63,42 +66,29 @@ class GeminiIntentProviderSecurityTest {
         String oversized = "A".repeat(4001);
         ProviderIntentResult result = provider.interpret(oversized, null);
         assertEquals(InterpretationStatus.INVALID_MODEL_RESPONSE, result.status());
-        verifyNoInteractions(httpClient);
+        verifyNoInteractions(chatModel);
     }
 
     @Test
-    void interpret_inputAtExactMaxLength_doesNotRejectBeforeApi() throws Exception {
+    void interpret_inputAtExactMaxLength_doesNotRejectBeforeApi() {
         when(properties.getApiKey()).thenReturn("valid-key");
-        when(properties.getApiUrl()).thenReturn("https://example.com/");
-        when(properties.getModel()).thenReturn("gemini");
-        when(properties.getTimeoutSeconds()).thenReturn(10);
-
-        @SuppressWarnings("unchecked")
-        HttpResponse<String> mockResponse = mock(HttpResponse.class);
-        when(mockResponse.statusCode()).thenReturn(500);
-        doReturn(mockResponse).when(httpClient).send(any(), any());
+        when(properties.getModel()).thenReturn("gemini-1.5-flash");
+        when(chatModel.call(any(Prompt.class))).thenThrow(new RuntimeException("API error"));
 
         String exactMax = "A".repeat(4000);
         assertThrows(AiProviderException.class,
                 () -> provider.interpret(exactMax, null));
 
-        verify(httpClient).send(any(), any());
+        verify(chatModel).call(any(Prompt.class));
     }
 
     @Test
-    void interpret_geminiEmptyCandidates_returnsInvalidModelResponse() throws Exception {
+    void interpret_geminiEmptyCandidates_returnsInvalidModelResponse() {
         when(properties.getApiKey()).thenReturn("valid-key");
-        when(properties.getApiUrl()).thenReturn("https://example.com/");
-        when(properties.getModel()).thenReturn("gemini");
-        when(properties.getTimeoutSeconds()).thenReturn(10);
+        when(properties.getModel()).thenReturn("gemini-1.5-flash");
 
-        String geminiBody = "{\"candidates\":[]}";
-
-        @SuppressWarnings("unchecked")
-        HttpResponse<String> mockResponse = mock(HttpResponse.class);
-        when(mockResponse.statusCode()).thenReturn(200);
-        when(mockResponse.body()).thenReturn(geminiBody);
-        doReturn(mockResponse).when(httpClient).send(any(), any());
+        ChatResponse emptyResponse = new ChatResponse(Collections.emptyList());
+        when(chatModel.call(any(Prompt.class))).thenReturn(emptyResponse);
 
         ProviderIntentResult result = provider.interpret("something", null);
         assertEquals(InterpretationStatus.INVALID_MODEL_RESPONSE, result.status());

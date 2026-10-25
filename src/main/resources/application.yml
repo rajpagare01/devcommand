@@ -1,6 +1,20 @@
 spring:
   application:
     name: devcommand
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY:dummy-openai-key}
+    google:
+      genai:
+        api-key: ${GEMINI_API_KEY:dummy-gemini-key}
+    model:
+      chat: none
+      audio:
+        speech: none
+        transcription: none
+      embedding: none
+      image: none
+      moderation: none
 
   datasource:
     url: ${DATABASE_URL}
