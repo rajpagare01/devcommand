@@ -20,6 +20,7 @@ import java.util.Optional;
 public interface DsaProblemRepository extends JpaRepository<DsaProblem, Long>, JpaSpecificationExecutor<DsaProblem> {
 
     Optional<DsaProblem> findByIdAndUserId(Long id, Long userId);
+    Optional<DsaProblem> findFirstByUserIdAndTitleIgnoreCase(Long userId, String title);
     
     long countByUserId(Long userId);
     long countByUserIdAndStatus(Long userId, com.devcommand.devcommand.dsa.entity.ProblemStatus status);

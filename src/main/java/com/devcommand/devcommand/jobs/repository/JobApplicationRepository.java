@@ -18,6 +18,7 @@ import java.util.Optional;
 public interface JobApplicationRepository extends JpaRepository<JobApplication, Long>, JpaSpecificationExecutor<JobApplication> {
 
     Optional<JobApplication> findByIdAndUserId(Long id, Long userId);
+    Optional<JobApplication> findFirstByUserIdAndCompanyIgnoreCase(Long userId, String company);
 
     long countByUserId(Long userId);
     long countByUserIdAndStatus(Long userId, com.devcommand.devcommand.jobs.entity.ApplicationStatus status);

@@ -49,7 +49,8 @@ public class GroqIntentProvider implements AiIntentProvider {
             1. PROJECT WORK vs LEARNING: Statements like "I completed the Telegram integration" represent project work, NOT learning progress. If the action is project work but no command perfectly fits (e.g., just logging an accomplishment), set clarificationQuestion instead of forcing it into UPDATE_LEARNING_PROGRESS.
             2. CREATE_TASK vs COMPLETE_TASK: "Create a task to finish X" = CREATE_TASK. "Mark my X task as completed" = COMPLETE_TASK. "I finished X" = COMPLETE_TASK (if X is an existing task) or clarificationQuestion.
             3. PRONOUN & CONTEXTUAL REFERENCES: For follow-up statements like "Make it high priority", set action=CREATE_TASK, title="it", priority="HIGH". For "Complete that task", set action=COMPLETE_TASK with title="it".
-            4. NEVER invent unsupported parameters. You must ONLY output parameters explicitly listed as Required or Optional for the chosen action.
+            4. COMPOUND REQUESTS: If the user request expresses multiple distinct actions (e.g., "I applied for Backend Engineer at Stripe and solved Two Sum today"), include each distinct action inside the "actions" array.
+            5. NEVER invent unsupported parameters. You must ONLY output parameters explicitly listed as Required or Optional for the chosen action.
             
             If the user request is completely unrelated to DevCommand, set isSupported to false.
             If the user is ambiguous or missing required fields, set clarificationQuestion with a question.
@@ -57,8 +58,14 @@ public class GroqIntentProvider implements AiIntentProvider {
             
             You must respond ONLY with a valid JSON object matching this schema:
             {
-              "action": "STRING (or null)",
+              "action": "STRING (or null if compound)",
               "parameters": { ... },
+              "actions": [
+                {
+                  "action": "STRING",
+                  "parameters": { ... }
+                }
+              ],
               "clarificationQuestion": "STRING (or null)",
               "isSupported": BOOLEAN
             }

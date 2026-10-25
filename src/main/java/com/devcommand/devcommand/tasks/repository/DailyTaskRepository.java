@@ -20,6 +20,7 @@ import java.util.Optional;
 public interface DailyTaskRepository extends JpaRepository<DailyTask, Long>, JpaSpecificationExecutor<DailyTask> {
 
     Optional<DailyTask> findByIdAndUserId(Long id, Long userId);
+    Optional<DailyTask> findFirstByUserIdAndTitleIgnoreCase(Long userId, String title);
 
     long countByUserId(Long userId);
     long countByUserIdAndStatus(Long userId, com.devcommand.devcommand.tasks.entity.DailyTaskStatus status);
