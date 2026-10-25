@@ -99,4 +99,53 @@ class FallbackAiIntentServiceTest {
         assertEquals(InterpretationStatus.INVALID_MODEL_RESPONSE, result.status());
         assertNull(result.command());
     }
+
+    @Test
+    void interpret_createDsaProblem_resolvesViaDomainEntityResolver() throws Exception {
+        com.devcommand.devcommand.integrations.ai.resolver.DomainEntityResolver entityResolver =
+                mock(com.devcommand.devcommand.integrations.ai.resolver.DomainEntityResolver.class);
+        service = new FallbackAiIntentService(properties, List.of(geminiProvider), entityResolver);
+
+        IntentDto intent = new IntentDto("CREATE_DSA_PROBLEM", Map.of("title", "Two Sum"), null, true);
+        when(geminiProvider.interpret(anyString(), any())).thenReturn(ProviderIntentResult.ready(intent));
+
+        when(entityResolver.resolveDsaProblem("Two Sum", null, null)).thenReturn(
+                com.devcommand.devcommand.integrations.ai.resolver.DsaProblemResolution.resolved(
+                        "Two Sum", "LEETCODE", com.devcommand.devcommand.dsa.entity.Difficulty.EASY, "Arrays & Hashing", "https://leetcode.com/problems/two-sum/"
+                )
+        );
+
+        InterpretationResult result = service.interpret(1L, "Today I solved Two Sum on LeetCode", null);
+
+        assertEquals(InterpretationStatus.READY, result.status());
+        assertNotNull(result.command());
+        assertEquals(CommandType.CREATE_DSA_PROBLEM, result.command().type());
+        assertEquals("Two Sum", result.command().parameters().requiredString("title"));
+        assertEquals("LEETCODE", result.command().parameters().requiredString("platform"));
+        assertEquals("EASY", result.command().parameters().requiredString("difficulty"));
+        assertEquals("Arrays & Hashing", result.command().parameters().requiredString("topic"));
+        assertEquals("SOLVED", result.command().parameters().requiredString("status"));
+    }
+
+    @Test
+    void interpret_createDsaProblem_ambiguous_returnsClarification() throws Exception {
+        com.devcommand.devcommand.integrations.ai.resolver.DomainEntityResolver entityResolver =
+                mock(com.devcommand.devcommand.integrations.ai.resolver.DomainEntityResolver.class);
+        service = new FallbackAiIntentService(properties, List.of(geminiProvider), entityResolver);
+
+        IntentDto intent = new IntentDto("CREATE_DSA_PROBLEM", Map.of("title", "Two Sum Special"), null, true);
+        when(geminiProvider.interpret(anyString(), any())).thenReturn(ProviderIntentResult.ready(intent));
+
+        when(entityResolver.resolveDsaProblem("Two Sum Special", null, null)).thenReturn(
+                com.devcommand.devcommand.integrations.ai.resolver.DsaProblemResolution.ambiguous(
+                        "Multiple matches found. Which one did you mean?"
+                )
+        );
+
+        InterpretationResult result = service.interpret(1L, "I solved Two Sum Special", null);
+
+        assertEquals(InterpretationStatus.CLARIFICATION_REQUIRED, result.status());
+        assertEquals("Multiple matches found. Which one did you mean?", result.message());
+        assertNull(result.command());
+    }
 }

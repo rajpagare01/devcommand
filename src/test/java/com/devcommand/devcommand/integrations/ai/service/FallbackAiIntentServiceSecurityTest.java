@@ -48,4 +48,10 @@ class FallbackAiIntentServiceSecurityTest {
         assertThrows(CommandException.class,
                 () -> service.interpret(1L, "create task", null));
     }
+
+    @Test
+    void interpret_nullUserId_throwsIllegalArgumentException() {
+        assertThrows(IllegalArgumentException.class,
+                () -> service.interpret(null, "create task", null));
+    }
 }

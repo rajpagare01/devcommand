@@ -43,6 +43,11 @@ public class ConversationContextService {
     }
 
     @Transactional
+    public Optional<ConversationContext> getLatestContext(Long userId) {
+        return repository.findTopByUserIdAndExpiresAtAfterOrderByUpdatedAtDesc(userId, ZonedDateTime.now());
+    }
+
+    @Transactional
     public void updateContext(Long userId, String chatId, ContextType type, Map<String, Object> data) {
         ConversationContext context = repository.findByUserIdAndChatId(userId, chatId)
                 .orElseGet(() -> {

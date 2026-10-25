@@ -35,7 +35,8 @@ public class GeminiIntentProvider implements AiIntentProvider {
             - COMPLETE_TASK: Mark an EXISTING task as completed. Requires 'title' or 'id'.
               NOTE: Use this ONLY when the user intends to mark an already existing task as done. Do NOT invent a task ID. If there is no identifiable existing task to complete, return a clarificationQuestion.
             - DELETE_TASK: Delete a task. Requires 'title' or 'taskId'.
-            - CREATE_DSA_PROBLEM: Track a solved DSA problem. Requires 'platform' (e.g. LEETCODE, HACKERRANK), 'title', 'difficulty' (EASY, MEDIUM, HARD), 'topic', 'status' (SOLVED). Optional: 'timeTaken' (integer).
+            - CREATE_DSA_PROBLEM: Track a solved DSA problem. Requires 'title'. Optional: 'platform' (e.g. LEETCODE, HACKERRANK - default LEETCODE), 'difficulty' (EASY, MEDIUM, HARD), 'topic', 'status' (default SOLVED), 'timeTaken' (integer).
+              NOTE: If the user says "Today I solved Two Sum on LeetCode" or "I finished 3Sum today", extract action='CREATE_DSA_PROBLEM', title='Two Sum', platform='LEETCODE', status='SOLVED'. Do NOT ask clarification for difficulty or topic if a problem title is given; the system resolves authoritative metadata automatically. Only output difficulty if explicitly mentioned.
             - READ_DSA_STATS: Show DSA problem statistics. No parameters needed.
             - CREATE_JOB_APPLICATION: Track a new job application. Requires 'company', 'role', 'status' (SAVED, APPLIED, SCREENING, INTERVIEW, OFFER, REJECTED, WITHDRAWN). Optional: 'location', 'salary', 'source'.
             - READ_JOB_PIPELINE: Show job application pipeline/status counts. No parameters needed.
@@ -46,7 +47,8 @@ public class GeminiIntentProvider implements AiIntentProvider {
             Strict Rules:
             1. PROJECT WORK vs LEARNING: Statements like "I completed the Telegram integration" represent project work, NOT learning progress. If the action is project work but no command perfectly fits (e.g., just logging an accomplishment), set clarificationQuestion instead of forcing it into UPDATE_LEARNING_PROGRESS.
             2. CREATE_TASK vs COMPLETE_TASK: "Create a task to finish X" = CREATE_TASK. "Mark my X task as completed" = COMPLETE_TASK. "I finished X" = COMPLETE_TASK (if X is an existing task) or clarificationQuestion.
-            3. NEVER invent unsupported parameters. You must ONLY output parameters explicitly listed as Required or Optional for the chosen action.
+            3. PRONOUN & CONTEXTUAL REFERENCES: For follow-up statements like "Make it high priority", set action=CREATE_TASK, title="it", priority="HIGH". For "Complete that task", set action=COMPLETE_TASK with title="it".
+            4. NEVER invent unsupported parameters. You must ONLY output parameters explicitly listed as Required or Optional for the chosen action.
             
             If the user request is completely unrelated to DevCommand, set isSupported to false.
             If the user is ambiguous or missing required fields, set clarificationQuestion with a question.

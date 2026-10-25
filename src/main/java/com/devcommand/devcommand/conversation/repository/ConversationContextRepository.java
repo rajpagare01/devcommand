@@ -14,6 +14,8 @@ public interface ConversationContextRepository extends JpaRepository<Conversatio
     @Modifying
     void deleteByUserIdAndChatId(Long userId, String chatId);
 
+    Optional<ConversationContext> findTopByUserIdAndExpiresAtAfterOrderByUpdatedAtDesc(Long userId, ZonedDateTime now);
+
     @Modifying
     @Query("DELETE FROM ConversationContext c WHERE c.expiresAt < :now")
     int deleteExpired(ZonedDateTime now);
