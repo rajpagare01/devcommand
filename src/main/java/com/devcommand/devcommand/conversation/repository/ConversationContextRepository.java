@@ -19,4 +19,6 @@ public interface ConversationContextRepository extends JpaRepository<Conversatio
     @Modifying
     @Query("DELETE FROM ConversationContext c WHERE c.expiresAt < :now")
     int deleteExpired(ZonedDateTime now);
+
+    boolean existsByChatIdAndUserIdNot(String chatId, Long userId);
 }

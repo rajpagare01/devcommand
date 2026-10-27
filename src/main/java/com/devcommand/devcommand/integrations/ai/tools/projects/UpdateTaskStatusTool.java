@@ -8,6 +8,7 @@ import com.devcommand.devcommand.tasks.dto.DailyTaskResponse;
 import com.devcommand.devcommand.tasks.dto.UpdateDailyTaskRequest;
 import com.devcommand.devcommand.tasks.entity.DailyTask;
 import com.devcommand.devcommand.tasks.entity.DailyTaskStatus;
+import com.devcommand.devcommand.tasks.entity.TaskPriority;
 import com.devcommand.devcommand.tasks.repository.DailyTaskRepository;
 import com.devcommand.devcommand.tasks.service.DailyTaskService;
 import lombok.RequiredArgsConstructor;
@@ -32,16 +33,17 @@ public class UpdateTaskStatusTool implements AiTool {
 
     @Override
     public String getDescription() {
-        return "Updates the status of a task (e.g. COMPLETED, IN_PROGRESS, TODO).";
+        return "Updates the status and/or priority of a task (e.g. COMPLETED, IN_PROGRESS, TODO, HIGH, MEDIUM, LOW).";
     }
 
     @Override
     public ToolSchema getSchema() {
         return ToolSchema.of(
-                "Updates status of a daily task",
+                "Updates status and/or priority of a daily task",
                 ToolParameter.optional("id", "integer", "ID of the task"),
                 ToolParameter.optional("title", "string", "Title of the task if ID is not known"),
-                ToolParameter.required("status", "string", "New status (COMPLETED, IN_PROGRESS, TODO)")
+                ToolParameter.optional("status", "string", "New status (COMPLETED, IN_PROGRESS, TODO)"),
+                ToolParameter.optional("priority", "string", "New priority (LOW, MEDIUM, HIGH, URGENT)")
         );
     }
 
@@ -52,7 +54,8 @@ public class UpdateTaskStatusTool implements AiTool {
 
     @Override
     public ToolExecutionResult execute(Map<String, Object> parameters, Long userId) {
-        String statusStr = parameters.get("status") != null ? parameters.get("status").toString().toUpperCase() : "COMPLETED";
+        String statusStr = parameters.get("status") != null ? parameters.get("status").toString().toUpperCase() : null;
+        String priorityStr = parameters.get("priority") != null ? parameters.get("priority").toString().toUpperCase() : null;
 
         Long id = null;
         if (parameters.get("id") != null) {
@@ -80,26 +83,39 @@ public class UpdateTaskStatusTool implements AiTool {
 
         try {
             DailyTaskResponse response;
-            if ("COMPLETED".equalsIgnoreCase(statusStr)) {
+            // Case 1: Simple completion without priority change
+            if ("COMPLETED".equalsIgnoreCase(statusStr) && priorityStr == null) {
                 response = dailyTaskService.complete(taskId, userId);
-            } else if ("IN_PROGRESS".equalsIgnoreCase(statusStr)) {
+            } else if ("IN_PROGRESS".equalsIgnoreCase(statusStr) && priorityStr == null) {
                 response = dailyTaskService.start(taskId, userId);
             } else {
-                DailyTaskStatus targetStatus = DailyTaskStatus.valueOf(statusStr);
+                DailyTaskStatus targetStatus = statusStr != null ? DailyTaskStatus.valueOf(statusStr) : task.getStatus();
+                TaskPriority targetPriority = priorityStr != null ? TaskPriority.valueOf(priorityStr) : task.getPriority();
+
                 UpdateDailyTaskRequest req = new UpdateDailyTaskRequest(
                         task.getTitle(),
                         task.getDescription(),
                         task.getCategory(),
-                        task.getPriority(),
+                        targetPriority,
                         targetStatus,
                         task.getDueDate()
                 );
                 response = dailyTaskService.update(taskId, userId, req);
             }
-            return ToolExecutionResult.success("Task '" + response.title() + "' status updated to " + response.status() + ".", response);
+
+            StringBuilder summary = new StringBuilder("Task '").append(response.title()).append("' updated");
+            if (priorityStr != null) {
+                summary.append(" (Priority: ").append(response.priority()).append(")");
+            }
+            if (statusStr != null) {
+                summary.append(" (Status: ").append(response.status()).append(")");
+            }
+            summary.append(".");
+
+            return ToolExecutionResult.success(summary.toString(), response);
         } catch (Exception e) {
-            log.error("Failed to update task status: {}", e.getMessage(), e);
-            return ToolExecutionResult.failure("Failed to update task status: " + e.getMessage());
+            log.error("Failed to update task: {}", e.getMessage(), e);
+            return ToolExecutionResult.failure("Failed to update task: " + e.getMessage());
         }
     }
 }

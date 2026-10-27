@@ -13,9 +13,13 @@ public abstract class AbstractIntegrationTest {
 
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", () -> "jdbc:postgresql://localhost:5432/devcommand_test");
-        registry.add("spring.datasource.username", () -> "postgres");
-        registry.add("spring.datasource.password", () -> "yzgD7jMECT4txBJa09fHpFwi");
+        String dbUrl = System.getenv().getOrDefault("DATABASE_URL", "jdbc:postgresql://localhost:5432/devcommand_test?sslmode=disable");
+        String dbUser = System.getenv().getOrDefault("DATABASE_USERNAME", "postgres");
+        String dbPass = System.getenv().getOrDefault("DATABASE_PASSWORD", System.getenv().getOrDefault("POSTGRES_PASSWORD", ""));
+
+        registry.add("spring.datasource.url", () -> dbUrl);
+        registry.add("spring.datasource.username", () -> dbUser);
+        registry.add("spring.datasource.password", () -> dbPass);
         registry.add("spring.datasource.driver-class-name", () -> "org.postgresql.Driver");
 
         registry.add("spring.jpa.hibernate.ddl-auto", () -> "validate");

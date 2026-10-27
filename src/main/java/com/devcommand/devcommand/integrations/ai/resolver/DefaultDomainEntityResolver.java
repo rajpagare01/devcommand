@@ -1,7 +1,7 @@
-package com.devcommand.devcommand.integrations.ai.resolver;
+ package com.devcommand.devcommand.integrations.ai.resolver;
 
-import com.devcommand.devcommand.conversation.entity.ConversationContext;
 import com.devcommand.devcommand.conversation.model.ContextType;
+import com.devcommand.devcommand.conversation.model.ContextualEntity;
 import com.devcommand.devcommand.conversation.service.ConversationContextService;
 import com.devcommand.devcommand.dsa.catalog.entity.DsaProblemCatalogEntry;
 import com.devcommand.devcommand.dsa.catalog.service.DsaProblemCatalogService;
@@ -35,11 +35,11 @@ import java.util.stream.Collectors;
 public class DefaultDomainEntityResolver implements DomainEntityResolver {
 
     private static final Set<String> CONTEXTUAL_PRONOUNS = Set.of(
-            "it", "that", "this", "that one", "this one",
-            "that task", "the task", "the previous task", "previous task",
-            "that problem", "the problem", "the previous problem", "previous problem",
-            "that project", "the project", "the previous project", "previous project",
-            "that application", "the application", "that company", "the company",
+            "it", "that", "this", "its", "that one", "this one",
+            "that task", "the task", "the previous task", "previous task", "latest task", "the latest task", "my latest task",
+            "that problem", "the problem", "the previous problem", "previous problem", "that dsa problem", "the one i just solved", "the one i solved",
+            "that project", "the project", "the previous project", "previous project", "my project",
+            "that application", "the application", "my latest application", "that company", "the company",
             "that topic", "the topic", "the previous topic"
     );
 
@@ -54,13 +54,50 @@ public class DefaultDomainEntityResolver implements DomainEntityResolver {
     private final LearningTopicMapper learningTopicMapper;
 
     @Override
-    public DsaProblemResolution resolveDsaProblem(String rawTitle, String rawPlatform, Difficulty explicitDifficulty) {
+    public DsaProblemResolution resolveDsaProblem(Long userId, String rawTitle, String rawPlatform, Difficulty explicitDifficulty, String chatId) {
         if (rawTitle == null || rawTitle.isBlank()) {
             return DsaProblemResolution.ambiguous("Please specify the title of the DSA problem you solved.");
         }
 
         String cleanedTitle = cleanTitle(rawTitle);
         String resolvedPlatform = normalizePlatform(rawPlatform);
+
+        // Check contextual reference ("it", "that problem", "the one I just solved", etc.)
+        if (isContextualReference(cleanedTitle)) {
+            if (userId != null) {
+                Optional<ContextualEntity> entityOpt = contextService.getEntity(userId, chatId, ContextType.LAST_DSA_PROBLEM);
+                if (entityOpt.isEmpty()) {
+                    try {
+                        Optional<com.devcommand.devcommand.conversation.entity.ConversationContext> ctxOpt = contextService.getContext(userId, chatId);
+                        if (ctxOpt.isPresent() && ctxOpt.get().getContextType() == ContextType.LAST_DSA_PROBLEM) {
+                            Map<String, Object> data = ctxOpt.get().getContextData();
+                            if (data != null) {
+                                Long id = data.get("id") != null ? Long.valueOf(data.get("id").toString()) : null;
+                                String title = data.get("title") != null ? data.get("title").toString() : null;
+                                String platform = data.get("platform") != null ? data.get("platform").toString() : null;
+                                entityOpt = Optional.of(ContextualEntity.dsa(id, title, platform, chatId, Map.of()));
+                            }
+                        }
+                    } catch (Exception ignored) {}
+                }
+                if (entityOpt.isPresent()) {
+                    ContextualEntity entity = entityOpt.get();
+                    String platform = (rawPlatform != null && !rawPlatform.isBlank()) ? resolvedPlatform : (entity.platform() != null ? entity.platform() : "LEETCODE");
+                    Difficulty diff = explicitDifficulty;
+                    if (diff == null && entity.metadata() != null && entity.metadata().containsKey("difficulty")) {
+                        try {
+                            diff = Difficulty.valueOf(entity.metadata().get("difficulty").toString().toUpperCase());
+                        } catch (Exception ignored) {}
+                    }
+                    String topic = entity.metadata() != null && entity.metadata().containsKey("topic")
+                            ? entity.metadata().get("topic").toString()
+                            : "Uncategorized";
+                    log.debug("Resolved contextual DSA reference '{}' to '{}' (Difficulty: {})", rawTitle, entity.title(), diff);
+                    return DsaProblemResolution.resolved(entity.title(), platform, diff != null ? diff : Difficulty.EASY, topic, null);
+                }
+            }
+            return DsaProblemResolution.ambiguous("Which DSA problem are you referring to?");
+        }
 
         // 1. Authoritative exact lookup in catalog
         Optional<DsaProblemCatalogEntry> exactMatch = dsaCatalogService.findExactMatch(cleanedTitle);
@@ -145,30 +182,57 @@ public class DefaultDomainEntityResolver implements DomainEntityResolver {
             throw new IllegalArgumentException("Authenticated userId is required for task resolution");
         }
 
-        // Check contextual reference (e.g. "it", "that task", null or blank)
         if (isContextualReference(rawReference)) {
-            Optional<ConversationContext> optContext = (chatId != null && !chatId.isBlank())
-                    ? contextService.getContext(userId, chatId)
-                    : Optional.empty();
-
-            if (optContext.isEmpty()) {
-                optContext = contextService.getLatestContext(userId);
+            Optional<ContextualEntity> taskEntityOpt = contextService.getEntity(userId, chatId, ContextType.LAST_TASK);
+            if (taskEntityOpt.isEmpty()) {
+                try {
+                    Optional<com.devcommand.devcommand.conversation.entity.ConversationContext> ctxOpt = contextService.getContext(userId, chatId);
+                    if (ctxOpt.isPresent() && ctxOpt.get().getContextType() == ContextType.LAST_TASK) {
+                        Map<String, Object> data = ctxOpt.get().getContextData();
+                        if (data != null) {
+                            Long id = data.get("id") != null ? Long.valueOf(data.get("id").toString()) : null;
+                            String title = data.get("title") != null ? data.get("title").toString() : null;
+                            taskEntityOpt = Optional.of(ContextualEntity.task(id, title, chatId, Map.of()));
+                        }
+                    }
+                } catch (Exception ignored) {}
             }
-
-            if (optContext.isPresent() && optContext.get().getContextType() == ContextType.LAST_TASK) {
-                Map<String, Object> data = optContext.get().getContextData();
-                Object idObj = data != null ? data.get("id") : null;
-                if (idObj != null) {
+            if (taskEntityOpt.isPresent()) {
+                ContextualEntity entity = taskEntityOpt.get();
+                if (entity.entityId() != null) {
                     try {
-                        Long taskId = Long.parseLong(idObj.toString());
-                        DailyTaskResponse task = dailyTaskService.getById(taskId, userId);
-                        return TaskResolution.resolved(taskId, task.title(), task);
+                        DailyTaskResponse task = dailyTaskService.getById(entity.entityId(), userId);
+                        log.debug("Resolved contextual task reference '{}' to task ID {} ('{}')", rawReference, entity.entityId(), task.title());
+                        return TaskResolution.resolved(entity.entityId(), task.title(), task);
                     } catch (Exception e) {
-                        log.warn("Failed to load last task {} for user {}", idObj, userId, e);
+                        log.warn("Failed to load last task {} for user {}", entity.entityId(), userId, e);
                     }
                 }
+                if (entity.title() != null) {
+                    return TaskResolution.resolved(entity.entityId(), entity.title(), null);
+                }
             }
+
+            // Fallback for creating revision tasks: if LAST_DSA_PROBLEM exists and reference is "it"
+            Optional<ContextualEntity> dsaOpt = contextService.getEntity(userId, chatId, ContextType.LAST_DSA_PROBLEM);
+            if (dsaOpt.isPresent() && dsaOpt.get().title() != null) {
+                String resolvedTitle = "Revise " + dsaOpt.get().title();
+                log.debug("Resolved contextual task reference to DSA revision task: '{}'", resolvedTitle);
+                return TaskResolution.resolved(null, resolvedTitle, null);
+            }
+
             return TaskResolution.ambiguous("I'm not sure which task you're referring to. Could you specify the task title or ID?");
+        }
+
+        // Check if rawReference is "revise it" or "revise that"
+        String lower = rawReference.trim().toLowerCase();
+        if (lower.equals("revise it") || lower.equals("revise that") || lower.equals("practice it")) {
+            Optional<ContextualEntity> dsaOpt = contextService.getEntity(userId, chatId, ContextType.LAST_DSA_PROBLEM);
+            if (dsaOpt.isPresent() && dsaOpt.get().title() != null) {
+                String resolvedTitle = "Revise " + dsaOpt.get().title();
+                log.debug("Resolved '{}' to DSA revision task: '{}'", rawReference, resolvedTitle);
+                return TaskResolution.resolved(null, resolvedTitle, null);
+            }
         }
 
         // Check numeric ID
@@ -203,25 +267,13 @@ public class DefaultDomainEntityResolver implements DomainEntityResolver {
         }
 
         if (isContextualReference(rawReference)) {
-            Optional<ConversationContext> optContext = (chatId != null && !chatId.isBlank())
-                    ? contextService.getContext(userId, chatId)
-                    : Optional.empty();
-
-            if (optContext.isEmpty()) {
-                optContext = contextService.getLatestContext(userId);
-            }
-
-            if (optContext.isPresent() && optContext.get().getContextType() == ContextType.LAST_PROJECT) {
-                Map<String, Object> data = optContext.get().getContextData();
-                Object idObj = data != null ? data.get("id") : null;
-                if (idObj != null) {
-                    try {
-                        Long projectId = Long.parseLong(idObj.toString());
-                        Project project = projectRepository.findByIdAndUserId(projectId, userId).orElse(null);
-                        if (project != null) {
-                            return ProjectResolution.resolved(projectId, project.getName(), projectMapper.toResponse(project));
-                        }
-                    } catch (Exception ignored) {}
+            Optional<ContextualEntity> entityOpt = contextService.getEntity(userId, chatId, ContextType.LAST_PROJECT);
+            if (entityOpt.isPresent() && entityOpt.get().entityId() != null) {
+                Long projectId = entityOpt.get().entityId();
+                Project project = projectRepository.findByIdAndUserId(projectId, userId).orElse(null);
+                if (project != null) {
+                    log.debug("Resolved contextual project reference '{}' to project ID {} ('{}')", rawReference, projectId, project.getName());
+                    return ProjectResolution.resolved(projectId, project.getName(), projectMapper.toResponse(project));
                 }
             }
             return ProjectResolution.ambiguous("Which project are you referring to?");
@@ -251,25 +303,13 @@ public class DefaultDomainEntityResolver implements DomainEntityResolver {
         }
 
         if (isContextualReference(rawReference)) {
-            Optional<ConversationContext> optContext = (chatId != null && !chatId.isBlank())
-                    ? contextService.getContext(userId, chatId)
-                    : Optional.empty();
-
-            if (optContext.isEmpty()) {
-                optContext = contextService.getLatestContext(userId);
-            }
-
-            if (optContext.isPresent() && optContext.get().getContextType() == ContextType.LAST_JOB_APPLICATION) {
-                Map<String, Object> data = optContext.get().getContextData();
-                Object idObj = data != null ? data.get("id") : null;
-                if (idObj != null) {
-                    try {
-                        Long appId = Long.parseLong(idObj.toString());
-                        JobApplication app = jobApplicationRepository.findByIdAndUserId(appId, userId).orElse(null);
-                        if (app != null) {
-                            return JobApplicationResolution.resolved(appId, app.getCompany(), jobApplicationMapper.toResponse(app));
-                        }
-                    } catch (Exception ignored) {}
+            Optional<ContextualEntity> entityOpt = contextService.getEntity(userId, chatId, ContextType.LAST_JOB_APPLICATION);
+            if (entityOpt.isPresent() && entityOpt.get().entityId() != null) {
+                Long appId = entityOpt.get().entityId();
+                JobApplication app = jobApplicationRepository.findByIdAndUserId(appId, userId).orElse(null);
+                if (app != null) {
+                    log.debug("Resolved contextual job application reference '{}' to ID {} ('{}')", rawReference, appId, app.getCompany());
+                    return JobApplicationResolution.resolved(appId, app.getCompany(), jobApplicationMapper.toResponse(app));
                 }
             }
             return JobApplicationResolution.ambiguous("Which job application are you referring to?");
@@ -300,19 +340,18 @@ public class DefaultDomainEntityResolver implements DomainEntityResolver {
         }
 
         if (isContextualReference(rawReference)) {
-            Optional<ConversationContext> optContext = (chatId != null && !chatId.isBlank())
-                    ? contextService.getContext(userId, chatId)
-                    : Optional.empty();
-
-            if (optContext.isEmpty()) {
-                optContext = contextService.getLatestContext(userId);
-            }
-
-            if (optContext.isPresent() && optContext.get().getContextType() == ContextType.LAST_LEARNING_TOPIC) {
-                Map<String, Object> data = optContext.get().getContextData();
-                Object topicObj = data != null ? data.get("topic") : null;
-                if (topicObj != null) {
-                    List<LearningTopic> topics = learningTopicRepository.findByUserIdAndTopicOrTechnologyIgnoreCase(userId, topicObj.toString());
+            Optional<ContextualEntity> entityOpt = contextService.getEntity(userId, chatId, ContextType.LAST_LEARNING_TOPIC);
+            if (entityOpt.isPresent()) {
+                ContextualEntity entity = entityOpt.get();
+                if (entity.entityId() != null) {
+                    Optional<LearningTopic> topicOpt = learningTopicRepository.findById(entity.entityId());
+                    if (topicOpt.isPresent() && topicOpt.get().getUser().getId().equals(userId)) {
+                        LearningTopic t = topicOpt.get();
+                        return LearningTopicResolution.resolved(t.getId(), t.getTopic(), learningTopicMapper.toResponse(t));
+                    }
+                }
+                if (entity.title() != null) {
+                    List<LearningTopic> topics = learningTopicRepository.findByUserIdAndTopicOrTechnologyIgnoreCase(userId, entity.title());
                     if (!topics.isEmpty()) {
                         LearningTopic t = topics.get(0);
                         return LearningTopicResolution.resolved(t.getId(), t.getTopic(), learningTopicMapper.toResponse(t));

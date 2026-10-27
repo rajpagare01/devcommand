@@ -9,6 +9,7 @@ public class AiProperties {
 
     private String primaryProvider = "gemini";
     private String fallbackProvider = "groq";
+    private int maxHistoryMessages = 20;
 
     public String getPrimaryProvider() {
         return primaryProvider;
@@ -24,5 +25,13 @@ public class AiProperties {
 
     public void setFallbackProvider(String fallbackProvider) {
         this.fallbackProvider = fallbackProvider;
+    }
+
+    public int getMaxHistoryMessages() {
+        return maxHistoryMessages;
+    }
+
+    public void setMaxHistoryMessages(int maxHistoryMessages) {
+        this.maxHistoryMessages = maxHistoryMessages;
     }
 }

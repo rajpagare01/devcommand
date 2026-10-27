@@ -1,6 +1,11 @@
 spring:
   application:
     name: devcommand
+  main:
+    allow-bean-definition-overriding: true
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration
   ai:
     openai:
       api-key: ${OPENAI_API_KEY:dummy-openai-key}
@@ -15,6 +20,9 @@ spring:
       embedding: none
       image: none
       moderation: none
+    vectorstore:
+      pgvector:
+        initialize-schema: false
 
   datasource:
     url: ${DATABASE_URL}
@@ -94,6 +102,8 @@ gemini:
 ai:
   primary-provider: ${AI_PRIMARY_PROVIDER:gemini}
   fallback-provider: ${AI_FALLBACK_PROVIDER:groq}
+  conversation:
+    max-history-messages: ${AI_MAX_HISTORY_MESSAGES:20}
   groq:
     enabled: ${GROQ_ENABLED:true}
     api-key: ${GROQ_API_KEY:}
@@ -101,6 +111,14 @@ ai:
     model: ${GROQ_MODEL:llama-3.3-70b-versatile}
     timeout-seconds: ${GROQ_TIMEOUT_SECONDS:30}
     max-retries: ${GROQ_MAX_RETRIES:2}
+  rag:
+    enabled: ${AI_RAG_ENABLED:true}
+    top-k: ${AI_RAG_TOP_K:4}
+    similarity-threshold: ${AI_RAG_SIMILARITY_THRESHOLD:0.65}
+    chunk-size: ${AI_RAG_CHUNK_SIZE:500}
+    chunk-overlap: ${AI_RAG_CHUNK_OVERLAP:50}
+    embedding-provider: ${AI_RAG_EMBEDDING_PROVIDER:openai}
+    dimensions: ${AI_RAG_DIMENSIONS:1536}
 
 ---
 spring:

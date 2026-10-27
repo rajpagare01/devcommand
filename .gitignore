@@ -5,6 +5,9 @@ target/
 .vscode/
 /test/
 src/main/resources/*
+!src/main/resources/db/
+!src/main/resources/db/**
+!src/main/resources/*.yml
 # Environment variables
 .env
 .env.*

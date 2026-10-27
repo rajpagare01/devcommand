@@ -4,6 +4,8 @@ import com.devcommand.devcommand.integrations.ai.tools.AiTool;
 import com.devcommand.devcommand.integrations.ai.tools.ToolExecutionResult;
 import com.devcommand.devcommand.integrations.ai.tools.ToolParameter;
 import com.devcommand.devcommand.integrations.ai.tools.ToolSchema;
+import com.devcommand.devcommand.projects.dto.ProjectTaskResponse;
+import com.devcommand.devcommand.projects.service.ProjectTaskService;
 import com.devcommand.devcommand.tasks.dto.DailyTaskResponse;
 import com.devcommand.devcommand.tasks.service.DailyTaskService;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +20,7 @@ import java.util.Map;
 public class ListTasksTool implements AiTool {
 
     private final DailyTaskService dailyTaskService;
+    private final ProjectTaskService projectTaskService;
 
     @Override
     public String getName() {
@@ -26,7 +29,7 @@ public class ListTasksTool implements AiTool {
 
     @Override
     public String getDescription() {
-        return "Lists tasks with optional filters by category, priority, status, or date filters ('today', 'upcoming').";
+        return "Lists tasks with optional filters by category, priority, status, date filters ('today', 'upcoming'), or project ID.";
     }
 
     @Override
@@ -37,6 +40,7 @@ public class ListTasksTool implements AiTool {
                 ToolParameter.optional("status", "string", "Filter by status (TODO, IN_PROGRESS, COMPLETED)"),
                 ToolParameter.optional("category", "string", "Filter by category (PERSONAL, WORK, LEARNING)"),
                 ToolParameter.optional("priority", "string", "Filter by priority (LOW, MEDIUM, HIGH, URGENT)"),
+                ToolParameter.optional("projectId", "integer", "Filter tasks by parent project ID"),
                 ToolParameter.optional("size", "integer", "Max results (default 10)")
         );
     }
@@ -48,6 +52,28 @@ public class ListTasksTool implements AiTool {
 
     @Override
     public ToolExecutionResult execute(Map<String, Object> parameters, Long userId) {
+        int size = 10;
+        if (parameters.get("size") != null) {
+            try {
+                size = Integer.parseInt(parameters.get("size").toString());
+                if (size <= 0) size = 10;
+            } catch (Exception ignored) {}
+        }
+
+        Long projectId = null;
+        if (parameters.get("projectId") != null) {
+            try {
+                projectId = Long.parseLong(parameters.get("projectId").toString());
+            } catch (Exception ignored) {}
+        }
+
+        if (projectId != null) {
+            Page<ProjectTaskResponse> page = projectTaskService.getAllForProject(projectId, userId, null, null, 0, size, "createdAt", "DESC");
+            String summary = String.format("Found %d tasks for project #%d (showing %d).",
+                    page.getTotalElements(), projectId, page.getNumberOfElements());
+            return ToolExecutionResult.success(summary, page.getContent());
+        }
+
         String filter = parameters.get("filter") != null ? parameters.get("filter").toString() : null;
 
         if ("today".equalsIgnoreCase(filter)) {
@@ -61,14 +87,6 @@ public class ListTasksTool implements AiTool {
         String category = parameters.get("category") != null ? parameters.get("category").toString() : null;
         String priority = parameters.get("priority") != null ? parameters.get("priority").toString() : null;
         String status = parameters.get("status") != null ? parameters.get("status").toString() : null;
-
-        int size = 10;
-        if (parameters.get("size") != null) {
-            try {
-                size = Integer.parseInt(parameters.get("size").toString());
-                if (size <= 0) size = 10;
-            } catch (Exception ignored) {}
-        }
 
         Page<DailyTaskResponse> page = dailyTaskService.getAll(
                 userId, category, priority, status, null, 0, size, "createdAt", "DESC"

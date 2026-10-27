@@ -5,8 +5,11 @@ import java.util.Set;
 
 public enum CommandType {
     CREATE_TASK("title", "description", "category", "priority", "status", "dueDate"),
+    UPDATE_TASK("id", "title", "description", "category", "priority", "status", "dueDate"),
     COMPLETE_TASK("title", "id"),
+    CREATE_PROJECT("name", "description", "status", "githubUrl", "liveUrl"),
     CREATE_DSA_PROBLEM("platform", "title", "difficulty", "topic", "status", "timeTaken"),
+    READ_DSA_PROBLEM("id", "title"),
     UPDATE_LEARNING_PROGRESS("topic", "progress", "hours"),
     CREATE_JOB_APPLICATION("company", "role", "status", "location", "salary", "source"),
 
@@ -20,6 +23,7 @@ public enum CommandType {
     READ_DSA_STATS(),
     READ_JOB_PIPELINE(),
     READ_LEARNING_PROGRESS(),
+    SEARCH_KNOWLEDGE("query", "documentType"),
 
     DELETE_TASK("taskId", "title", "chatId"),
     CONFIRM_ACTION("token", "chatId"),

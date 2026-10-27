@@ -1,4 +1,9 @@
 spring:
+  main:
+    allow-bean-definition-overriding: true
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration
   ai:
     openai:
       api-key: dummy-openai-key
@@ -13,10 +18,13 @@ spring:
       embedding: none
       image: none
       moderation: none
+    vectorstore:
+      pgvector:
+        initialize-schema: false
   datasource:
-    url: jdbc:postgresql://localhost:5432/devcommand_test
-    username: postgres
-    password: yzgD7jMECT4txBJa09fHpFwi
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/devcommand_test?sslmode=disable}
+    username: ${DATABASE_USERNAME:postgres}
+    password: ${DATABASE_PASSWORD:${POSTGRES_PASSWORD:}}
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
@@ -51,6 +59,14 @@ ai:
     model: llama3-70b-8192
     timeout-seconds: 30
     max-retries: 2
+  rag:
+    enabled: true
+    top-k: 4
+    similarity-threshold: 0.65
+    chunk-size: 500
+    chunk-overlap: 50
+    embedding-provider: test
+    dimensions: 1536
 
 leetcode:
   enabled: true

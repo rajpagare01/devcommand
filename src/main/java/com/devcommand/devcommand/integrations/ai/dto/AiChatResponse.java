@@ -10,6 +10,7 @@ import java.util.Map;
 public record AiChatResponse(
         OrchestratorStatus status,
         String message,
+        String conversationId,
         List<ToolExecutionResult> results,
         String confirmationToken,
         Map<String, Object> pendingContext
@@ -18,6 +19,7 @@ public record AiChatResponse(
         return new AiChatResponse(
                 resp.status(),
                 resp.responseMessage(),
+                resp.conversationId(),
                 resp.results(),
                 resp.confirmationToken(),
                 resp.pendingContext()

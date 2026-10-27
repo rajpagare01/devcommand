@@ -138,19 +138,9 @@ public class FallbackAiIntentService implements NaturalLanguageInterpreter {
         if (intent == null || intent.action() == null) {
             return InterpretationResult.invalid();
         }
-        CommandType type;
-        try {
-            type = CommandType.valueOf(intent.action());
-        } catch (IllegalArgumentException e) {
-            log.warn("AI provider returned unknown action: {}", intent.action());
-            return InterpretationResult.invalid();
-        }
 
-        if (type.isReserved()) {
-            log.warn("AI provider returned reserved action: {}", type);
-            return InterpretationResult.unsupported();
-        }
-
+        // Handle generic or ambiguous actions
+        String actionStr = intent.action().trim().toUpperCase();
         Map<String, Object> paramsMap = intent.parameters() != null 
                 ? intent.parameters() 
                 : Collections.emptyMap();
@@ -159,6 +149,19 @@ public class FallbackAiIntentService implements NaturalLanguageInterpreter {
         if (paramsMap.containsKey("userId") || paramsMap.containsKey("user_id") || paramsMap.containsKey("ownerId")) {
             log.warn("Security violation: LLM generated user ownership identifier in parameters");
             throw new CommandException("Client-supplied user ID is strictly rejected for security.");
+        }
+
+        CommandType type;
+        try {
+            type = CommandType.valueOf(actionStr);
+        } catch (IllegalArgumentException e) {
+            log.warn("AI provider returned unknown action: {}", intent.action());
+            return InterpretationResult.invalid();
+        }
+
+        if (type.isReserved()) {
+            log.warn("AI provider returned reserved action: {}", type);
+            return InterpretationResult.unsupported();
         }
 
         Map<String, Object> resolvedMap = new java.util.HashMap<>(paramsMap);
@@ -176,7 +179,10 @@ public class FallbackAiIntentService implements NaturalLanguageInterpreter {
                 }
 
                 com.devcommand.devcommand.integrations.ai.resolver.DsaProblemResolution dsaRes =
-                        domainEntityResolver.resolveDsaProblem(rawTitle, rawPlatform, explicitDiff);
+                        domainEntityResolver.resolveDsaProblem(userId, rawTitle, rawPlatform, explicitDiff, conversationContext);
+                if (dsaRes == null) {
+                    dsaRes = domainEntityResolver.resolveDsaProblem(rawTitle, rawPlatform, explicitDiff);
+                }
 
                 if (!dsaRes.isResolved()) {
                     return InterpretationResult.clarification(dsaRes.clarificationMessage(), Map.of("action", "CREATE_DSA_PROBLEM", "parameters", paramsMap));
@@ -187,10 +193,25 @@ public class FallbackAiIntentService implements NaturalLanguageInterpreter {
                 resolvedMap.put("difficulty", dsaRes.difficulty().name());
                 resolvedMap.put("topic", dsaRes.topic() != null ? dsaRes.topic() : "Uncategorized");
                 resolvedMap.put("status", paramsMap.getOrDefault("status", "SOLVED"));
+
+            } else if (type == CommandType.READ_DSA_PROBLEM) {
+                String rawTitle = paramsMap.get("title") != null ? paramsMap.get("title").toString() : "it";
+                com.devcommand.devcommand.integrations.ai.resolver.DsaProblemResolution dsaRes =
+                        domainEntityResolver.resolveDsaProblem(userId, rawTitle, null, null, conversationContext);
+                if (dsaRes == null) {
+                    dsaRes = domainEntityResolver.resolveDsaProblem(rawTitle, null, null);
+                }
+
+                if (!dsaRes.isResolved()) {
+                    return InterpretationResult.clarification(dsaRes.clarificationMessage(), Map.of("action", "READ_DSA_PROBLEM", "parameters", paramsMap));
+                }
+
+                resolvedMap.put("title", dsaRes.title());
+
             } else if (type == CommandType.COMPLETE_TASK || type == CommandType.DELETE_TASK) {
                 boolean hasExplicitId = paramsMap.get("id") != null || paramsMap.get("taskId") != null;
-                if (!hasExplicitId && paramsMap.get("title") != null) {
-                    String rawTitle = paramsMap.get("title").toString();
+                String rawTitle = paramsMap.get("title") != null ? paramsMap.get("title").toString() : "it";
+                if (!hasExplicitId) {
                     com.devcommand.devcommand.integrations.ai.resolver.TaskResolution taskRes =
                             domainEntityResolver.resolveTask(userId, rawTitle, conversationContext);
 
@@ -205,15 +226,43 @@ public class FallbackAiIntentService implements NaturalLanguageInterpreter {
                         resolvedMap.put("taskId", String.valueOf(taskRes.taskId()));
                     }
                 }
+
+            } else if (type == CommandType.UPDATE_TASK) {
+                boolean hasExplicitId = paramsMap.get("id") != null;
+                if (!hasExplicitId) {
+                    String rawTitle = paramsMap.get("title") != null ? paramsMap.get("title").toString() : "it";
+                    com.devcommand.devcommand.integrations.ai.resolver.TaskResolution taskRes =
+                            domainEntityResolver.resolveTask(userId, rawTitle, conversationContext);
+
+                    if (!taskRes.isResolved()) {
+                        return InterpretationResult.clarification(taskRes.clarificationMessage(), Map.of("action", "UPDATE_TASK", "parameters", paramsMap));
+                    }
+
+                    resolvedMap.put("title", taskRes.title());
+                    if (taskRes.taskId() != null) {
+                        resolvedMap.put("id", String.valueOf(taskRes.taskId()));
+                    }
+                }
+
             } else if (type == CommandType.CREATE_TASK) {
                 String rawTitle = paramsMap.get("title") != null ? paramsMap.get("title").toString() : null;
-                if ("it".equalsIgnoreCase(rawTitle) || "that".equalsIgnoreCase(rawTitle)) {
+                if (rawTitle != null && isPronounOrRevision(rawTitle)) {
                     com.devcommand.devcommand.integrations.ai.resolver.TaskResolution taskRes =
                             domainEntityResolver.resolveTask(userId, rawTitle, conversationContext);
                     if (taskRes.isResolved()) {
                         resolvedMap.put("title", taskRes.title());
                     } else {
                         return InterpretationResult.clarification("I'm not sure which task you mean. Please specify the task title.", Map.of("action", "CREATE_TASK", "parameters", paramsMap));
+                    }
+                }
+
+            } else if (type == CommandType.READ_PENDING_TASKS) {
+                // If checking tasks for a project implicitly or explicitly
+                if (paramsMap.containsKey("projectId") && ("it".equalsIgnoreCase(paramsMap.get("projectId").toString()) || "its".equalsIgnoreCase(paramsMap.get("projectId").toString()))) {
+                    com.devcommand.devcommand.integrations.ai.resolver.ProjectResolution projRes =
+                            domainEntityResolver.resolveProject(userId, "it", conversationContext);
+                    if (projRes.isResolved()) {
+                        resolvedMap.put("projectId", String.valueOf(projRes.projectId()));
                     }
                 }
             }
@@ -223,5 +272,11 @@ public class FallbackAiIntentService implements NaturalLanguageInterpreter {
         Command command = new Command(type, userId, params);
 
         return InterpretationResult.ready(command);
+    }
+
+    private boolean isPronounOrRevision(String text) {
+        String clean = text.trim().toLowerCase();
+        return clean.equals("it") || clean.equals("that") || clean.equals("this") ||
+               clean.equals("revise it") || clean.equals("revise that") || clean.startsWith("revise ");
     }
 }

@@ -59,6 +59,16 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }
 
+    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+    public ResponseEntity<ErrorResponse> handleAccessDenied(org.springframework.security.access.AccessDeniedException ex, HttpServletRequest request) {
+        return build(HttpStatus.FORBIDDEN, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ErrorResponse> handleIllegalArgument(IllegalArgumentException ex, HttpServletRequest request) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+    }
+
     @ExceptionHandler(com.devcommand.devcommand.command.CommandException.class)
     public ResponseEntity<ErrorResponse> handleCommandException(com.devcommand.devcommand.command.CommandException ex, HttpServletRequest request) {
         return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
